@@ -135,6 +135,7 @@ public static class SelfTests
             && !AntigravityProvider.IsLocalQuotaUri(new Uri("https://127.0.0.1:1234/GenerateContent"))
             && !AntigravityProvider.IsLocalQuotaUri(new Uri("https://user@127.0.0.1:1234" + agRpc))
             && !AntigravityProvider.IsLocalQuotaUri(new Uri("https://127.0.0.1:1234" + agRpc + "?redirect=1")), "Antigravity TLS exception is restricted to loopback quota RPCs");
+        count += FeatureTests.Run();
         Console.WriteLine($"{count} tests passed."); return 0;
     }
 }

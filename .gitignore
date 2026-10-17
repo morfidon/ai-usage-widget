@@ -4,6 +4,7 @@ dist/
 data/
 .build-cli/
 .nuget/
+.verify/
 *.user
 tests/bridge-fixture/
 tests/reference/
