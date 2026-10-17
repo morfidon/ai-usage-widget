@@ -26,7 +26,7 @@ public sealed class JsonlCursor : IDisposable
     readonly MemoryStream pending = new();
     bool oversized;
     public int Skipped { get; private set; }
-    public bool Read(string path, long budget, Action<JsonElement> consume, CancellationToken token)
+    public bool Read(string path, long budget, Action<JsonElement> consume, CancellationToken token, Func<ReadOnlyMemory<byte>, bool>? include = null)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         if (stream.Length < Offset) { Offset = 0; pending.SetLength(0); oversized = false; }
@@ -45,11 +45,17 @@ public sealed class JsonlCursor : IDisposable
                 if (next < 0) break;
                 if (!oversized && pending.Length > 0)
                 {
-                    try { using var doc = JsonDocument.Parse(pending.GetBuffer().AsMemory(0, (int)pending.Length)); consume(doc.RootElement); }
+                    try
+                    {
+                        var line = pending.GetBuffer().AsMemory(0, (int)pending.Length);
+                        if (include is null || include(line)) { using var doc = JsonDocument.Parse(line); consume(doc.RootElement); }
+                    }
                     catch (JsonException) { Skipped++; }
                 }
                 else if (oversized) Skipped++;
-                pending.SetLength(0); oversized = false; pos = next + 1;
+                pending.SetLength(0);
+                if (pending.Capacity > 524288) pending.Capacity = 65536;
+                oversized = false; pos = next + 1;
             }
         }
         return Offset < stream.Length;
@@ -81,7 +87,7 @@ public sealed class TranscriptAnalytics : IDisposable
     }
     public AnalyticsSnapshot Scan(CancellationToken token)
     {
-        var since = DateTimeOffset.UtcNow.AddDays(-7); long budget = 64_000_000; bool more = false; int skipped = 0;
+        var since = DateTimeOffset.UtcNow.AddDays(-7); long budget = 128_000_000; bool more = false; int skipped = 0;
         var candidates = new List<(string Path, string Provider, DateTime Modified)>();
         foreach (var source in sources)
         {
@@ -107,7 +113,11 @@ public sealed class TranscriptAnalytics : IDisposable
                 long length = new FileInfo(file.Path).Length;
                 if (length < data.Cursor.Offset) { data.Dispose(); files[file.Path] = data = new FileData(); }
                 long before = data.Cursor.Offset;
-                more |= data.Cursor.Read(file.Path, Math.Min(budget, 16_000_000), e => Parse(data, file.Provider, e, since), token);
+                more |= data.Cursor.Read(file.Path, Math.Min(budget, 32_000_000), e => Parse(data, file.Provider, e, since), token,
+                    line => file.Provider == "Claude"
+                        ? line.Span.IndexOf("\"usage\""u8) >= 0 && line.Span.IndexOf("\"input_tokens\""u8) >= 0
+                        : line.Span.IndexOf("\"token_usage_record\""u8) >= 0 || line.Span.IndexOf("\"token_count\""u8) >= 0
+                            || line.Span.IndexOf("\"turn_context\""u8) >= 0 || line.Span.IndexOf("\"session_meta\""u8) >= 0);
                 budget -= data.Cursor.Offset - before;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; }

@@ -20,7 +20,8 @@ public sealed class UsageHistory
         try
         {
             var rows = JsonSerializer.Deserialize<List<UsageSample>>(File.ReadAllText(this.path));
-            Samples.AddRange((rows ?? new()).Where(s => s.Provider is "Claude" or "Codex"
+            Samples.AddRange((rows ?? new()).Where(s => s is not null && (s.Provider is "Claude" or "Codex")
+                && !string.IsNullOrWhiteSpace(s.Id) && !string.IsNullOrWhiteSpace(s.Label)
                 && double.IsFinite(s.Used) && s.Used >= 0 && s.Used <= 100
                 && s.At >= DateTimeOffset.UtcNow.AddDays(-31) && s.At <= DateTimeOffset.UtcNow.AddMinutes(1))
                 .OrderBy(s => s.At).DistinctBy(s => (s.Provider, s.Id, s.At)));
@@ -37,7 +38,8 @@ public sealed class UsageHistory
         {
             if (!double.IsFinite(w.Used) || w.ResetAt is long reset && reset <= at.ToUnixTimeSeconds()) continue;
             var last = Samples.LastOrDefault(s => s.Provider == state.Name && s.Id == w.Id);
-            if (last is not null && (at <= last.At || (at - last.At < TimeSpan.FromMinutes(5)
+            if (last is not null && (at <= last.At || (at - last.At < TimeSpan.FromMinutes(1) && last.ResetAt == w.ResetAt)
+                || (at - last.At < TimeSpan.FromMinutes(5)
                 && last.Used == w.Used && last.ResetAt == w.ResetAt))) continue;
             Samples.Add(new(state.Name, w.Id, w.Label, at, Math.Clamp(w.Used, 0, 100), w.ResetAt));
             changed = true;

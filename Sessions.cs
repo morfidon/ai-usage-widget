@@ -127,9 +127,9 @@ public sealed class SessionMonitor
         {
             using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             try { f.Lock(0, 1); f.Unlock(0, 1); return false; }
-            catch (IOException) { return true; }
+            catch (IOException e) { return (e.HResult & 0xFFFF) is 32 or 33; }
         }
-        catch (IOException) { return true; }
+        catch (IOException e) { return (e.HResult & 0xFFFF) is 32 or 33; }
         catch (UnauthorizedAccessException) { return false; }
     }
     public static (List<LiveSession>, string?) ReadCodex()
