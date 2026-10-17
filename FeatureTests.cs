@@ -71,6 +71,9 @@ public static class FeatureTests
             Check(stats.Entries.Single(e => e.Provider == "Claude").Total == 138, "Claude streaming updates use final token counts");
             Check(stats.Entries.Single(e => e.Provider == "Codex").Total == 90, "Codex cached input is not counted twice");
             Check(analyzer.Scan(CancellationToken.None).Entries.Count == 2, "Repeated analytics refresh is idempotent");
+            var trayClaude = s with { Name = "Claude", Updated = DateTimeOffset.Now, Windows = new() { new("five_hour", "5h", 6, DateTimeOffset.Now.AddHours(2).ToUnixTimeSeconds(), 300), new("seven_day", "7d", 91, DateTimeOffset.Now.AddDays(2).ToUnixTimeSeconds(), 10080) } };
+            string tooltip = TrayFormatter.Format(s with { Updated = DateTimeOffset.Now }, trayClaude);
+            Check(tooltip.Contains("5h 94%") && tooltip.Contains("7d 9%") && tooltip.Length <= 63, "Tray tooltip retains both Claude windows when weekly quota is constrained");
         }
         finally { Directory.Delete(dir, true); }
         return n;

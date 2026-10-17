@@ -400,9 +400,7 @@ public sealed class MainWindow : Window
         footer.Text = busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
             : $"Odczyt {updates.Max()!.Value.LocalDateTime:HH:mm}" + (settings.Compact ? "" : " · automatyczne odświeżanie");
         SetTip(footer, "Aktualizacja danych", string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")) + "\nDane odświeżają się automatycznie.");
-        string Summary(ProviderState s) => s.Windows.Where(w => !w.Expired).OrderBy(w => w.Group is null ? 0 : w.Remaining).FirstOrDefault() is UsageWindow w ? $"{s.Name}: {w.Remaining:0}% wolne" : $"{s.Name}: oczekiwanie";
-        string traySummary = string.Join(" | ", new[] { codexState, claudeState }.Select(Summary));
-        tray.Text = traySummary.Substring(0, Math.Min(63, traySummary.Length));
+        tray.Text = TrayFormatter.Format(codexState, claudeState);
         var selected = settings.TrayProvider == "Claude" ? claudeState : codexState;
         var shared = selected.Windows.Where(w => !w.Expired && (selected.Name != "Codex" || w.Id.StartsWith("codex:"))).ToList();
         var quota = shared.OrderBy(w => w.Remaining).FirstOrDefault();

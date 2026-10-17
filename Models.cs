@@ -142,3 +142,19 @@ public sealed class Settings
         File.Move(PathName + ".tmp", PathName, true);
     }
 }
+
+public static class TrayFormatter
+{
+    public static string Format(ProviderState codex, ProviderState claude)
+    {
+        string Summary(ProviderState state)
+        {
+            if (!state.Connected || state.Updated is null || DateTimeOffset.Now - state.Updated > TimeSpan.FromMinutes(10)) return state.Name + ": ?";
+            var windows = state.Windows.Where(w => !w.Expired && (state.Name != "Codex" || w.Id.StartsWith("codex:"))).OrderBy(w => w.Minutes).Take(2);
+            string detail = string.Join(" ", windows.Select(w => (w.Minutes == 300 ? "5h" : w.Minutes == 10080 ? "7d" : "limit") + $" {w.Remaining:0}%"));
+            return state.Name + ": " + (detail.Length > 0 ? detail : "?");
+        }
+        string value = "Wolne · " + Summary(codex) + " | " + Summary(claude);
+        return value[..Math.Min(63, value.Length)];
+    }
+}
