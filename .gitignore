@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+data/
+.build-cli/
+.nuget/
+*.user
+tests/bridge-fixture/
+tests/reference/
+tools/central/*.exe

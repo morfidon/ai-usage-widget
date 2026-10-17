@@ -1,0 +1,62 @@
+# AI Usage Widget — Claude + Codex + Antigravity + Devin + JetBrains Air
+
+Natywny widget Windows pokazujący jednocześnie pozostałe limity subskrypcji Claude, Codex, Google Antigravity, Devin oraz kredyty JetBrains AI używane w Air. Nie wysyła promptów ani nie uruchamia zadań AI.
+
+## Obsługa
+
+- Uruchom `Uruchom widget.cmd` lub **AI Usage Widget** z menu Start.
+- Przeciągnij nagłówek, aby przesunąć okno. Położenie i wybrany tryb są zapamiętywane.
+- `◆` włącza lub wyłącza pozostawanie nad innymi oknami.
+- `↻` odświeża limity. Claude respektuje przerwę między odczytami nawet przy ręcznym odświeżaniu.
+- `▤` przełącza pełny i kompaktowy widok. Oba pokazują wszystkie limity przekazane przez dostawcę.
+- `−` lub Escape ukrywa panel. Kliknięcie rybki przy zegarze przywraca okno.
+- Menu `•••` i prawy przycisk ikony przy zegarze udostępniają autostart i zakończenie aplikacji.
+- Powiadomienie pojawia się, gdy pozostaje najwyżej 10% danego limitu.
+
+W widoku kompaktowym kolumna **Pozostało** i cienki pasek pokazują dostępny procent limitu: np. 84% oznacza wypełnienie paska w 84%. Pod paskiem widnieje odliczanie oraz dzień i godzina resetu. Procent wykorzystania, plan konta, pełna data resetu i czas odczytu są w tooltipach: najedź na wartość, pasek, nagłówek konta, reset lub stopkę. Strzałki i powtarzające się podpisy zużycia są widoczne wyłącznie w pełnym widoku. Niebieski wyróżnia Codex, fioletowy Claude; żółty sygnalizuje najwyżej 20% pozostałego limitu, a czerwony najwyżej 10%. Dane nieaktualne mają osobny komunikat.
+
+W pełnym widoku duży procent jest podpisany **pozostało**. Kolorowe wypełnienie paska pokazuje **wykorzystaną** część limitu i rośnie od lewej (0%) do prawej (100%). Nad paskiem widnieje osobny podpis „Wykorzystano …% limitu”; poniżej są skala i czas resetu. Procenty opisują limit subskrypcji udostępniony przez konto.
+
+Każdy limit ma wyróżniony termin resetu: odliczanie (np. „Reset za 1 godz. 40 min”) oraz dzień i godzinę (np. „Środa, 7 października · 14:00”). Dla bliskich terminów pojawiają się „Dzisiaj” i „Jutro”. Tryb kompaktowy także pokazuje reset, ze skróconą datą; pełny termin dostępny jest po najechaniu. Godziny są w lokalnej strefie Windows, odliczanie aktualizuje się automatycznie, a daty pochodzą z odczytu konta.
+
+## Połączenie z kontami
+
+**Antigravity (Google AI Pro/Ultra):** uruchom Antigravity i zaloguj się w nim na swoje konto Google. Widget automatycznie wykrywa lokalny serwer aplikacji (także Antigravity IDE) i odczytuje `RetrieveUserQuotaSummary`. Karta zawiera grupy **Gemini** oraz **Claude / GPT**, każdą z osobnymi paskami **Tydzień** i **5 godzin**. Jeśli konto udostępnia oddzielną pulę **Gemini 4 Argon**, pojawia się ona na końcu karty z jednym paskiem **Tydzień**, własnym procentem i terminem resetu. Argon nie jest łączony ze standardową pulą Gemini ani wyświetlany jako limit pięciogodzinny. Modele w grupie współdzielą pulę; podpowiedź nagłówka wyjaśnia, jakie modele obejmuje. Plan pochodzi z odczytu `GetUserStatus` tego samego serwera, z pierwszeństwem `userTier`. Starsze wersje aplikacji, bez zestawienia limitów, korzystają z `GetUserStatus` / `GetCommandModelConfigs`: wtedy widget scala tylko pule pięciogodzinne i wyraźnie informuje o braku danych tygodniowych. Nie kopiuje procentu ani resetu sesji do limitu tygodniowego. Nie utożsamia tych limitów z kredytami Google AI ani z limitami osobnej subskrypcji Claude/Codex. Serwer musi działać; po zamknięciu Antigravity pozostaje oznaczony jako nieaktualny ostatni odczyt. Odczyt odbywa się co 2 minuty, wyłącznie przez `127.0.0.1`, bez promptów. Token lokalnego połączenia jest przechowywany tylko w pamięci; widget nie odczytuje ani nie zapisuje tokenów OAuth Google, adresu e-mail czy imienia. Wewnętrzny interfejs aplikacji może zmienić się po aktualizacji. Sprawdzono rzeczywiste połączenie z Antigravity na koncie Pro.
+
+**Codex:** lokalny, zainstalowany `codex app-server`, oficjalne `account/rateLimits/read`, z istniejącym logowaniem aplikacji. Bez tworzenia rozmów i wywoływania modeli. Kolejność i nazwy okien wynikają z ich rzeczywistej długości — konto może udostępniać wyłącznie limit tygodniowy. Dodatkowe pule modeli są wyświetlane, gdy zwróci je serwer.
+
+**Claude:** instalator podpina `claude-bridge.ps1` jako oficjalny `statusLine` w użytkownikowym `settings.json`. Claude przekazuje limity po odpowiedzi w zalogowanej sesji Claude Code; widget odczytuje je co 3 sekundy. Istniejący pasek statusu jest zachowany i wykonywany przez bridge. Ustawienia niezwiązane z paskiem pozostają zachowane. W stanie bezczynności widget uzupełnia dane przez wewnętrzny endpoint `https://api.anthropic.com/api/oauth/usage`, używając lokalnego logowania Claude Code. Wygasły token odświeża przez inicjalizację protokołu zainstalowanego Claude Code, bez wiadomości użytkownika i wywołania modelu, w trybie wyłączającym niestandardowe hooki oraz MCP. Rotacja i zapis tokenów pozostają zadaniem Claude Code. Endpoint limitów nie stanowi stabilnego publicznego API: przy odmowie lub ograniczeniu odczytów widget czeka na oficjalne dane sesji. Gdy wygaśnie również uprawnienie do odnowienia logowania, potrzebne jest ponowne zalogowanie w Claude Code.
+
+**Devin:** widget odczytuje istniejące logowanie Devin Desktop z `AppData/Roaming/devin/User/globalStorage/state.vscdb` przez systemową bibliotekę SQLite Windows, w trybie tylko do odczytu. Z tym logowaniem wywołuje `GetUserStatus` na serwerze konta. Pro udostępnia limit dzienny i tygodniowy, Max tygodniowy; wyświetlane są tylko rzeczywiste aktywne limity. Procent oznacza pozostałą pulę, a resety pochodzą z serwera. Ten interfejs klienta jest nieudokumentowany i może zmienić się po aktualizacji Devin. Widget nie modyfikuje danych aplikacji i nie zapisuje klucza konta.
+
+**JetBrains Air:** odczyt przez oficjalny JetBrains Central CLI 1.11.0, wyłącznie `central limit --json`. Przenośne narzędzie znajduje się w `tools/central/central.exe`; można je pobrać ponownie przez `install-central.ps1`. Pierwsze połączenie wymaga osobnego logowania JetBrains: uruchom `Połącz JetBrains Air.cmd` lub wybierz **JetBrains Air · połącz konto** w menu widgetu. Jeśli masz kilka źródeł kredytów, wybierz to samo co w Air. Central przechowuje i odnawia swoje szyfrowane logowanie. Widget nie uruchamia proxy ani nie zmienia konfiguracji agentów. Licznik dotyczy wspólnej puli JetBrains AI używanej także w Air. Pula miesięczna i dodatkowe kredyty mają osobne paski oraz salda. Tylko miesięczna pula otrzymuje odliczanie do resetu; dodatkowe kredyty mają własną ważność, której ten odczyt nie podaje. Nazwa właściciela licencji i adres e-mail nie są zapisywane w danych widgetu. Rzeczywisty odczyt obu puli potwierdzono na zalogowanym koncie.
+
+Przy uruchomieniu Windows widget łączy się automatycznie. Nieaktywny internet lub brak logowania jednego dostawcy nie blokuje pozostałych kart. Zapisany odczyt zachowuje swój czas, a po przekroczeniu resetu procent zastępuje kreska do czasu rzeczywistego odczytu. Gdy wszystkie karty nie mieszczą się na ekranie, lista przewija się, pozostawiając nagłówek i stopkę dostępne.
+
+Dokumentacja: [Codex App Server](https://developers.openai.com/codex/app-server), [Claude Code status line](https://code.claude.com/docs/en/statusline), [limity Antigravity](https://www.antigravity.google/docs/cli/commands/usage), [opis lokalnego interfejsu Antigravity](https://github.com/mesomya/openusage-windows/blob/main/docs/providers/antigravity.md), [plany Devin](https://docs.devin.ai/admin/billing/self-serve), [przykład odczytu Devin](https://github.com/wakamex/devin-cli-usage), [JetBrains Central](https://www.jetbrains.com/help/central-cli/cli-commands.html), [kredyty Air](https://www.jetbrains.com/help/air/ai-credits.html). Format JSON kredytów sprawdzono także w [parserze ccstatusline](https://github.com/CrazyCoder/ccstatusline).
+
+## Instalacja i budowanie
+
+Wymagane Windows 10/11 oraz .NET Desktop Runtime 9; do kompilacji .NET SDK 9. Projekt nie pobiera pakietów NuGet i nie wymaga Pythona ani Node.
+
+Przed ponowną kompilacją zamknij działający widget przez **Zakończ** w menu jego ikony przy zegarze.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Instalator tworzy autostart bieżącego użytkownika (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `AIUsageWidget`), skrót w menu Start oraz połączenie Claude. Nie wymaga uprawnień administratora. Pliki wykonawcze znajdują się w `dist`; nie należy przenosić katalogu projektu po instalacji bez ponownego uruchomienia instalatora.
+
+```powershell
+# Wyłącz autostart i przywróć poprzedni pasek statusu Claude:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
+# Diagnostyka rzeczywistych połączeń bez wyświetlania tokenów:
+dotnet .\dist\AIUsageWidget.dll --diagnose
+```
+
+`data/settings.json` zawiera położenie, `Compact`, `Topmost`, `RefreshSeconds` (domyślnie 60), opcjonalny `CodexPath` oraz `ClaudeDirectory`. Zmiany tego pliku obowiązują po ponownym uruchomieniu. API Claude jest odczytywane najwyżej co 5 minut, z wydłużaniem przerwy po HTTP 429. Codex jest odczytywany co 60 sekund, a Antigravity, Devin i JetBrains co 2 minuty. Widget nie zapisuje tokenów; lokalny cache zawiera tylko odczytane limity i daty. Kopia ustawień Claude sprzed instalacji może zawierać prywatne ustawienia i nie jest przeznaczona do udostępniania.
+
+## Weryfikacja
+
+`build.ps1` uruchamia 70 testów parserów, terminów resetu i ograniczeń odnowienia logowania, w tym limity Devin, wartości zerowe pomijane przez protobuf, brak dziennego limitu Max, bezpieczne adresy serwera, stringi liczbowe JetBrains, milisekundy resetu, osobne pule miesięczne i dodatkowe oraz brakujące i nielimitowane pule. `tests/test_bridge.ps1` sprawdza zapis cache, zachowanie wcześniejszego paska i odfiltrowanie wrażliwych pól na oddzielnych danych testowych. `--diagnose` sprawdza pięć rzeczywistych połączeń. `--diagnose-antigravity` sprawdza tylko lokalny odczyt Antigravity i zapisuje pozbawiony danych konta wynik do `data/antigravity-diagnostic.json`. Testy Antigravity obejmują dwie podstawowe grupy i cztery niezależne limity, oddzielny tygodniowy limit Argon, terminy resetu, pominięte zera protobuf, brakujące i wyłączone pule, niepoprawne wartości, stabilną kolejność, zgodność cache oraz uczciwy odczyt zastępczy bez limitów tygodniowych. Połączenia są ograniczone do lokalnych metod odczytu. `--capture` zapisuje podgląd aktualnego okna do `data/preview.png` i sprawdzenie widoczności do `data/window-check.json` po 12 sekundach.
