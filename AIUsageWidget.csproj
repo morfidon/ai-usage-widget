@@ -11,4 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <DefaultItemExcludes>$(DefaultItemExcludes);dist/**;data/**</DefaultItemExcludes>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="assets/*.svg" />
+  </ItemGroup>
 </Project>
