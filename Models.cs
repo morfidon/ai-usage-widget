@@ -125,6 +125,8 @@ public sealed class Settings
     public int RefreshSeconds { get; set; } = 60;
     public string? CodexPath { get; set; }
     public string? ClaudeDirectory { get; set; }
+    public string TrayProvider { get; set; } = "Codex";
+    public bool AnimateMascots { get; set; } = true;
     public static string ProjectDirectory => Directory.GetParent(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))!.FullName;
     public static string DataDirectory => Path.Combine(ProjectDirectory, "data");
     public static string PathName => Path.Combine(DataDirectory, "settings.json");
