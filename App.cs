@@ -37,6 +37,8 @@ public static class Program
         if (args.Contains("--self-test")) return SelfTests.Run();
         if (args.Contains("--diagnose")) return Diagnose().GetAwaiter().GetResult();
         if (args.Contains("--diagnose-antigravity")) return DiagnoseAntigravity().GetAwaiter().GetResult();
+        if (args.Contains("--diagnose-activity")) return DiagnoseActivity(args.Contains("--full-history")).GetAwaiter().GetResult();
+        if (args.Contains("--visual-test")) return VisualVerification.Run();
         using var mutex = new Mutex(true, @"Local\AIUsageWidget.Video.v1", out bool first);
         using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\AIUsageWidget.Show.v1");
         if (!first) { showEvent.Set(); return 0; }
@@ -80,6 +82,23 @@ public static class Program
         File.WriteAllText(Path.Combine(Settings.DataDirectory, "antigravity-diagnostic.json"), result);
         Console.WriteLine(result);
         return state.Connected && state.Windows.Count > 0 ? 0 : 2;
+    }
+    static async Task<int> DiagnoseActivity(bool fullHistory)
+    {
+        var settings = Settings.Load(); using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(fullHistory ? 240 : 45));
+        var sessions = await new SessionMonitor(settings).Read(timeout.Token);
+        using var analytics = new TranscriptAnalytics(settings);
+        var stats = await Task.Run(() => analytics.Scan(timeout.Token), timeout.Token);
+        while (fullHistory && stats.Loading) stats = await Task.Run(() => analytics.Scan(timeout.Token), timeout.Token);
+        var result = new {
+            Sessions = new[] { "Codex", "Claude" }.Select(name => new { Provider = name, Count = sessions.Sessions.Count(s => s.Provider == name),
+                Working = sessions.Sessions.Count(s => s.Provider == name && s.State == "working"), Waiting = sessions.Sessions.Count(s => s.Provider == name && s.State == "waiting"), Error = sessions.ErrorFor(name) }),
+            Analytics = new[] { "Codex", "Claude" }.Select(name => new { Provider = name, Requests = stats.Entries.Count(s => s.Provider == name), Tokens = stats.Entries.Where(s => s.Provider == name).Sum(s => s.Total) }),
+            stats.Loading, stats.Skipped, CollectionMode = "Quota and local metadata reads; no model inference"
+        };
+        string json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(Path.Combine(Settings.DataDirectory, "activity-diagnostic.json"), json); Console.WriteLine(json);
+        return sessions.CodexError is null && sessions.ClaudeError is null ? 0 : 2;
     }
     static async Task<int> Diagnose()
     {
