@@ -143,37 +143,18 @@ public sealed class MainWindow : Window
     static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;
     static TextBlock Text(string value, double size = 12, Brush? color = null, FontWeight? weight = null) => new()
     { Text = value, FontSize = size, Foreground = color ?? ForegroundBrush, FontWeight = weight ?? FontWeights.Normal };
-    static ToolTip Tip(string title, string detail = "")
-    {
-        var content = new StackPanel();
-        var heading = Text(title, 12, ForegroundBrush, FontWeights.SemiBold);
-        heading.TextWrapping = TextWrapping.Wrap; content.Children.Add(heading);
-        if (detail.Length > 0)
-        {
-            var description = Text(detail, 11, Muted); description.TextWrapping = TextWrapping.Wrap;
-            description.Margin = new Thickness(0, 6, 0, 0); content.Children.Add(description);
-        }
-        return new ToolTip { Content = content, Background = Brush("#242A34"), Foreground = ForegroundBrush,
-            BorderBrush = Brush("#46505F"), BorderThickness = new Thickness(1), Padding = new Thickness(11), MaxWidth = 310 };
-    }
-    static void SetTip(FrameworkElement target, string title, string detail = "")
-    {
-        target.ToolTip = Tip(title, detail);
-        AutomationProperties.SetHelpText(target, title + (detail.Length > 0 ? "\n" + detail : ""));
-        ToolTipService.SetInitialShowDelay(target, 300);
-        ToolTipService.SetShowDuration(target, 20000);
-    }
+    static void SetTip(FrameworkElement target, string title, string detail = "") => WidgetTips.Set(target, title, detail);
     static Brush QuotaColor(UsageWindow window, bool stale) => window.Expired || stale ? Muted
         : window.Remaining <= 10 ? Brush("#F18C99") : window.Remaining <= 20 ? Brush("#EAC06C") : ForegroundBrush;
     static string UpdatedText(ProviderState state) => state.Updated.HasValue
         ? state.Updated.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss") : "Brak odczytu";
     static string QuotaDetail(UsageWindow window, ProviderState state) =>
         (window.Group is null ? "" : window.Group + " · " + window.Label + "\n")
-        + (string.IsNullOrEmpty(window.DetailText) ? "" : window.DetailText + "\n")
         + (window.Expired ? "Termin resetu minął; czekam na aktualny odczyt.\nOstatnio: " : "")
         + $"{window.Remaining:0.#}% pozostało · {window.Used:0.#}% wykorzystano\n"
         + (window.BalanceText is null ? "" : window.BalanceText + "\n")
-        + $"{window.ResetText}\nOdczyt: {UpdatedText(state)}";
+        + $"{window.ResetText}\nOdczyt: {UpdatedText(state)}"
+        + (string.IsNullOrEmpty(window.DetailText) ? "" : "\n" + WidgetTips.Line(window.DetailText));
     static ResetPresentation Reset(UsageWindow window) => window.Renews
         ? ResetFormatter.Format(window.ResetAt, DateTimeOffset.Now, TimeZoneInfo.Local)
         : new("Bez resetu miesięcznego", "", "");
@@ -388,7 +369,7 @@ public sealed class MainWindow : Window
             line.TextTrimming = TextTrimming.CharacterEllipsis; block.Children.Add(line);
         }
         if (active.Count > (settings.Compact ? 2 : 4)) block.Children.Add(Text("+ " + (active.Count - (settings.Compact ? 2 : 4)) + " więcej · szczegóły", 9, Muted));
-        SetTip(block, "Sesje " + providerName, sessions.ErrorFor(providerName) ?? string.Join("\n", active.Select(s => s.Name + " · " + s.StateLabel + (s.Reason.Length > 0 ? " · " + s.Reason : ""))));
+        SetTip(block, "Sesje " + providerName, WidgetTips.Sessions(active, sessions.ErrorFor(providerName)));
         block.MouseLeftButtonUp += (_, e) => { OpenInsights(); insights?.SelectSessions(); e.Handled = true; };
         panel.Children.Add(block);
     }
@@ -415,7 +396,7 @@ public sealed class MainWindow : Window
         footer.FontSize = settings.Compact ? 9 : 10;
         footer.Text = busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
             : $"Odczyt {updates.Max()!.Value.LocalDateTime:HH:mm}" + (settings.Compact ? "" : " · automatyczne odświeżanie");
-        SetTip(footer, "Aktualizacja danych", string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")) + "\nDane odświeżają się automatycznie.");
+        SetTip(footer, "Aktualizacja danych", string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")));
         tray.Text = TrayFormatter.Format(codexState, claudeState);
         var selected = settings.TrayProvider == "Claude" ? claudeState : codexState;
         var shared = selected.Windows.Where(w => !w.Expired && (selected.Name != "Codex" || w.Id.StartsWith("codex:"))).ToList();
@@ -474,7 +455,7 @@ public sealed class MainWindow : Window
         AddMascot(title, state);
         if (!string.IsNullOrEmpty(state.Plan)) title.Children.Add(Text("  " + state.Plan.ToUpperInvariant(), 8, Muted));
         header.Children.Add(title);
-        var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = state.Status + HealthDetail(state.Name) };
+        var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Background = Brushes.Transparent };
         bool stale = Stale(state);
         var dot = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Fill = stale ? Brush("#E5B66A") : new SolidColorBrush(color), Margin = new Thickness(0, 0, 5, 0) };
         status.Children.Add(dot); if (stale) status.Children.Add(Text("Oczekiwanie", 9, Muted));
@@ -535,8 +516,6 @@ public sealed class MainWindow : Window
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var brand = new StackPanel { Orientation = Orientation.Horizontal };
         var providerName = Text(state.Name, 12, new SolidColorBrush(color), FontWeights.SemiBold);
-        SetTip(providerName, state.Name + (state.Plan.Length > 0 ? " · " + state.Plan.ToUpperInvariant() : ""),
-            state.Status + "\nOdczyt: " + UpdatedText(state) + HealthDetail(state.Name));
         brand.Children.Add(providerName);
         AddMascot(brand, state);
         var statusTarget = new Border { Width = 21, Background = Brushes.Transparent };
@@ -572,20 +551,16 @@ public sealed class MainWindow : Window
             }
             main.Children.Add(labels);
             var value = Text(window.Expired ? "—" : $"{window.Remaining:0}%", 22, QuotaColor(window, stale), FontWeights.SemiBold);
-            SetTip(value, $"{state.Name} · {window.Label}", QuotaDetail(window, state));
             Grid.SetColumn(value, 1); main.Children.Add(value); row.Children.Add(main);
-            SetTip(main, $"{state.Name} · {window.Label}", QuotaDetail(window, state));
+            SetTip(row, $"{state.Name} · {window.Label}", QuotaDetail(window, state));
             row.Children.Add(RemainingBar(window, state, GroupColor(window, color)));
             var reset = Reset(window);
             var resetLine = new Grid { Margin = new Thickness(0, 2, 0, 0), Background = Brushes.Transparent };
             resetLine.ColumnDefinitions.Add(new ColumnDefinition()); resetLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var countdown = Text(reset.Countdown, 10, Muted); countdown.Margin = new Thickness(0, 0, 5, 0);
-            SetTip(countdown, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText
-                + (window.Renews ? "\nCzas lokalny: " + TimeZoneInfo.Local.DisplayName : ""));
             countdown.TextWrapping = TextWrapping.Wrap; resetLine.Children.Add(countdown);
             var calendar = Text(reset.ShortCalendar, 10, Muted); Grid.SetColumn(calendar, 1); resetLine.Children.Add(calendar);
-            SetTip(resetLine, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText
-                + (window.Renews ? "\nCzas lokalny: " + TimeZoneInfo.Local.DisplayName : ""));
+            SetTip(resetLine, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText);
             row.Children.Add(resetLine); panel.Children.Add(row);
         }
         if (state.Windows.Count > 0 && stale)
@@ -629,7 +604,6 @@ public sealed class MainWindow : Window
         fill.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.ForegroundProperty));
         track.AppendChild(fill); rail.AppendChild(track); template.VisualTree = rail; bar.Template = template;
         AutomationProperties.SetName(bar, $"{state.Name} · {window.Label} · pozostały limit");
-        SetTip(bar, "Pozostały limit", "Kolorowa część paska odpowiada procentowi w kolumnie Pozostało.\n" + QuotaDetail(window, state));
         return bar;
     }
     FrameworkElement ResetBadge(UsageWindow window, Color color)
@@ -638,8 +612,7 @@ public sealed class MainWindow : Window
         var badge = new Border { Background = Brush("#1C2129"), CornerRadius = new CornerRadius(7),
             Padding = new Thickness(settings.Compact ? 7 : 9, settings.Compact ? 5 : 8, settings.Compact ? 7 : 9, settings.Compact ? 5 : 8),
             Margin = new Thickness(0, settings.Compact ? 3 : 9, 0, 0) };
-        SetTip(badge, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText
-            + (window.Renews ? "\nCzas lokalny: " + TimeZoneInfo.Local.DisplayName : ""));
+        SetTip(badge, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText);
         if (settings.Compact)
         {
             var line = new Grid(); line.ColumnDefinitions.Add(new ColumnDefinition());

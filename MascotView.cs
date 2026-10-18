@@ -42,8 +42,8 @@ public sealed class MascotView : FrameworkElement
     {
         this.provider = provider; this.state = state; this.animate = animate;
         Width = 66; Height = 50;
-        ToolTip = provider + " · " + Label(state);
-        System.Windows.Automation.AutomationProperties.SetName(this, (string)ToolTip);
+        WidgetTips.Set(this, provider, Label(state));
+        System.Windows.Automation.AutomationProperties.SetName(this, provider + " · " + Label(state));
         timer.Tick += (_, _) => { phase += 0.35; InvalidateVisual(); };
         Loaded += (_, _) => UpdateTimer(); Unloaded += (_, _) => timer.Stop();
         IsVisibleChanged += (_, _) => UpdateTimer();

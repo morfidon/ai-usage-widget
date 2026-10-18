@@ -129,7 +129,7 @@ public sealed class InsightsWindow : Window
         projectBody.Children.Add(InsightsUi.Metrics(("Tokeny", Tokens(total)), ("Projekty", groups.Count.ToString()),
             ("Sesje", entries.Select(e => e.Session).Distinct().Count().ToString())));
         var note = InsightsUi.Text("Udział w lokalnych tokenach · nie w limicie abonamentu", 11, InsightsUi.Muted);
-        note.ToolTip = "Dane z rozmów na tym komputerze. Tokeny nie są rachunkiem: ceny modeli i koszt cache są różne.";
+        WidgetTips.Set(note, "Tokeny z lokalnych rozmów", "To nie jest rachunek ani procent abonamentu.\nCeny modeli i koszt cache są różne.");
         projectBody.Children.Add(note);
         if (analysis.Loading) projectBody.Children.Add(InsightsUi.Text("Indeksowanie… wyniki częściowe", 12, InsightsUi.Muted));
         foreach (var g in groups.Take(20))
@@ -142,7 +142,7 @@ public sealed class InsightsWindow : Window
             string project = System.IO.Path.GetFileName(g.Key.TrimEnd('\\', '/'));
             var title = InsightsUi.Text(project, 15); title.FontWeight = FontWeights.SemiBold;
             title.TextWrapping = TextWrapping.NoWrap; title.TextTrimming = TextTrimming.CharacterEllipsis;
-            title.Margin = new Thickness(0, 0, 14, 6); title.ToolTip = g.Key; heading.Children.Add(title);
+            title.Margin = new Thickness(0, 0, 14, 6); WidgetTips.Set(title, "Folder projektu", g.Key); heading.Children.Add(title);
             var amount = InsightsUi.Text($"{Tokens(tokens)}  ·  {share:0.#}%", 14); Grid.SetColumn(amount, 1); heading.Children.Add(amount);
             box.Children.Add(heading);
             box.Children.Add(new ProgressBar { Value = share, Height = 5, Margin = new Thickness(0, 4, 0, 8),
@@ -207,10 +207,10 @@ public sealed class InsightsWindow : Window
                 var heading = new DockPanel();
                 var status = InsightsUi.Text(s.StateLabel, 12, InsightsUi.Brush(s.State == "waiting" ? "#F1C879" : "#89D9C1"));
                 DockPanel.SetDock(status, Dock.Right); heading.Children.Add(status);
-                var title = InsightsUi.Text(s.Name, 14); title.FontWeight = FontWeights.SemiBold; title.Margin = new Thickness(0, 3, 14, 6); heading.Children.Add(title);
+                var title = InsightsUi.Text(WidgetTips.Line(s.Name, 100), 14); title.FontWeight = FontWeights.SemiBold; title.Margin = new Thickness(0, 3, 14, 6); heading.Children.Add(title);
                 content.Children.Add(heading);
                 var path = InsightsUi.Text(s.Directory, 11, InsightsUi.Muted); path.TextWrapping = TextWrapping.NoWrap;
-                path.TextTrimming = TextTrimming.CharacterEllipsis; path.ToolTip = s.Directory; content.Children.Add(path);
+                path.TextTrimming = TextTrimming.CharacterEllipsis; WidgetTips.Set(path, "Folder sesji", s.Directory); content.Children.Add(path);
                 if (s.Reason.Length > 0) content.Children.Add(InsightsUi.Text(s.Reason, 12, InsightsUi.Muted));
                 sessionBody.Children.Add(InsightsUi.Card(content));
             }
@@ -247,7 +247,7 @@ public sealed class InsightsWindow : Window
             historyBody.Children.Add(InsightsUi.Card(content));
         }
         var help = InsightsUi.Text("Najedź na wykres, aby zobaczyć odczyt. Przerwy oznaczają reset lub brak danych.", 11, InsightsUi.Muted);
-        help.ToolTip = "Czas lokalny. Historia zawiera rzeczywiste odczyty konta, bez odtwarzania dawnych procentów z tokenów.";
+        WidgetTips.Set(help, "Historia limitów", "Rzeczywiste odczyty konta · czas lokalny.\nPrzerwy oznaczają reset lub brak danych.");
         historyBody.Children.Add(help);
     }
 }
@@ -281,7 +281,8 @@ public sealed class HistoryChart : FrameworkElement
             if (nearest is not null && Math.Abs(Position(nearest).X - pos.X) > 14) nearest = null;
             if (ReferenceEquals(nearest, hover)) return;
             hover = nearest;
-            ToolTip = nearest is null ? null : $"{nearest.Label} · {nearest.At.LocalDateTime:dd.MM.yyyy HH:mm}\n{nearest.Used:0.#}% wykorzystano · {100 - nearest.Used:0.#}% pozostało";
+            if (nearest is null) ToolTip = null;
+            else WidgetTips.Set(this, nearest.Label, $"{nearest.Used:0.#}% wykorzystano · {100 - nearest.Used:0.#}% pozostało\n{nearest.At.LocalDateTime:dd.MM.yyyy HH:mm}");
             InvalidateVisual();
         };
         MouseLeave += (_, _) => { if (hover is null) return; hover = null; ToolTip = null; InvalidateVisual(); };

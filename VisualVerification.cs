@@ -15,7 +15,7 @@ namespace AIUsageWidget;
 
 public static class VisualVerification
 {
-    public static void Capture(Window window, string name)
+    public static void Capture(FrameworkElement window, string name)
     {
         foreach (var view in Descendants(window).OfType<MascotView>())
         {
@@ -92,6 +92,24 @@ public static class VisualVerification
                         p.Children.Add(InsightsUi.Text(MascotView.Label(state), 10, InsightsUi.Muted)); grid.Children.Add(p);
                     }
                 gallery.Show(); await Task.Delay(200); Capture(gallery, "visual-mascots"); gallery.Close();
+                var tipTarget = Descendants(main).OfType<FrameworkElement>()
+                    .First(e => System.Windows.Automation.AutomationProperties.GetHelpText(e).StartsWith("Sesje Codex"));
+                if (ToolTipService.GetInitialShowDelay(tipTarget) != 120 || ToolTipService.GetBetweenShowDelay(tipTarget) != 1000)
+                    throw new Exception("Tooltip timing is inconsistent");
+                var longSession = new LiveSession("Codex", "long", "# Files pasted by the user:\n" + new string('x', 20000), "C:/work/usage-ai", "working");
+                var samples = new[] {
+                    ("sessions", "Sesje Codex", WidgetTips.Sessions(Enumerable.Range(0, 10).Select(i => longSession with { Id = i.ToString(), State = i == 9 ? "waiting" : "working" }), null)),
+                    ("quota", "Codex · Tydzień", "36% pozostało · 64% wykorzystano\nReset w środę o 11:20\nOdczyt: 18.10.2026 09:35"),
+                    ("long", new string('T', 400), string.Join("\n", Enumerable.Repeat(new string('x', 1000), 40))) };
+                foreach (var (file, title, description) in samples)
+                {
+                    WidgetTips.Set(tipTarget, title, description);
+                    var tip = (ToolTip)tipTarget.ToolTip; tip.PlacementTarget = tipTarget; tip.IsOpen = true;
+                    await Task.Delay(140); tip.UpdateLayout();
+                    if (tip.ActualWidth > 321 || tip.ActualHeight > 239 || tip.ActualWidth < 40)
+                        throw new Exception("Tooltip exceeds its display bounds");
+                    Capture(tip, "visual-tooltip-" + file); tip.IsOpen = false;
+                }
                 // A reused card must still react to a fresh quota and to a session changing state.
                 var quotaField = typeof(MainWindow).GetField("claudeState", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 var quota = (ProviderState)quotaField.GetValue(main)!;
@@ -105,7 +123,7 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 11, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, NarrowWindow = true, EmptyAndSparseHistory = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 14, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

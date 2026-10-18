@@ -9,7 +9,16 @@ public static class WidgetTheme
     {
         var resources = (ResourceDictionary)XamlReader.Parse("""
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <Style TargetType="ToolTip"><Setter Property="Background" Value="#263343"/><Setter Property="Foreground" Value="#EDF2F7"/><Setter Property="BorderBrush" Value="#52647B"/><Setter Property="Padding" Value="12,9"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style TargetType="ToolTip">
+    <Setter Property="Background" Value="#202B39"/><Setter Property="Foreground" Value="#EDF2F7"/>
+    <Setter Property="BorderBrush" Value="#45576D"/><Setter Property="Padding" Value="13,11"/><Setter Property="FontSize" Value="12"/>
+    <Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToolTip">
+      <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="9" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+        <ContentPresenter/>
+      </Border>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="Expander">
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander">
       <StackPanel>
