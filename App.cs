@@ -34,6 +34,7 @@ public static class Program
     public static int Main(string[] args)
     {
         Directory.CreateDirectory(Settings.DataDirectory);
+        if (args.Contains("--benchmark")) return PerformanceBenchmarks.Run(args);
         if (args.Contains("--self-test")) return SelfTests.Run();
         if (args.Contains("--diagnose")) return Diagnose().GetAwaiter().GetResult();
         if (args.Contains("--diagnose-antigravity")) return DiagnoseAntigravity().GetAwaiter().GetResult();
