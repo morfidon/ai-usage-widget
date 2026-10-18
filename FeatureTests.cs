@@ -18,6 +18,11 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
+            const string threadId = "019ef3c1-1234-7123-8123-0123456789ab";
+            Check(CodexNavigation.ThreadUri(threadId) == "codex://threads/" + threadId,
+                "Codex navigation targets the exact existing thread without prompt or wake parameters");
+            Check(new[] { "", "new", "../new", threadId + "?prompt=hello", "codex://threads/" + threadId, Guid.Empty.ToString() }
+                .All(id => CodexNavigation.ThreadUri(id) is null), "Invalid session IDs cannot become a Codex navigation command");
             var at = DateTimeOffset.UtcNow;
             var projectRows = new[] {
                 new TokenEntry("Codex", "project-a", "session-a", "model-a", at, 10, 90, 0, 0, false),

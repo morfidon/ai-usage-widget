@@ -55,6 +55,7 @@ public sealed class InsightsWindow : Window
     readonly HashSet<string> requestedTitles = new();
     bool closed;
     readonly bool allowSessionTitles;
+    readonly Func<string, string?> openCodexSession;
     bool overviewDirty = true;
     public string SelectedProvider => (string)provider.SelectedItem;
     DateTimeOffset Since => DateTimeOffset.Now.AddDays(period.SelectedIndex == 0 ? -1 : -7);
@@ -78,9 +79,10 @@ public sealed class InsightsWindow : Window
         view.Collapsed += (_, _) => expanded[key] = false;
         return view;
     }
-    public InsightsWindow(UsageHistory history, bool allowSessionTitles = true)
+    public InsightsWindow(UsageHistory history, bool allowSessionTitles = true, Func<string, string?>? openCodexSession = null)
     {
         this.allowSessionTitles = allowSessionTitles;
+        this.openCodexSession = openCodexSession ?? CodexNavigation.Open;
         this.history = history;
         Title = "AI Usage · szczegóły"; Width = 820; Height = 760; MinWidth = 620; MinHeight = 440;
         MaxHeight = SystemParameters.WorkArea.Height; MaxWidth = SystemParameters.WorkArea.Width;
@@ -360,7 +362,32 @@ public sealed class InsightsWindow : Window
             string id = session.Id.Length > 16 ? session.Id[..8] + "…" + session.Id[^6..] : session.Id;
             string title = live is not null && !string.IsNullOrWhiteSpace(live.Name) ? WidgetTips.Line(live.Name, 70)
                 : SelectedProvider == "Codex" && sessionTitles.TryGetValue(session.Id, out var savedTitle) ? savedTitle : "Sesja " + id;
-            row.Children.Add(RankingHeading(title, session.Tokens.Total, data.Tokens.Total));
+            var launchError = InsightsUi.Text("", 13, InsightsUi.Brush("#F1BE88"));
+            launchError.Visibility = Visibility.Collapsed;
+            var sessionHeading = (Grid)RankingHeading(title, session.Tokens.Total, data.Tokens.Total);
+            if (SelectedProvider == "Codex")
+            {
+                var label = sessionHeading.Children.OfType<TextBlock>().First();
+                sessionHeading.Children.Remove(label);
+                label.Text += " ↗"; label.Foreground = new SolidColorBrush(InsightsUi.Blue);
+                var open = new Button { Content = label, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Left };
+                AutomationProperties.SetName(open, "Otwórz w Codex: " + title);
+                WidgetTips.Set(open, "Otwórz rozmowę w Codex", "");
+                open.Click += async (_, _) =>
+                {
+                    open.IsEnabled = false; launchError.Visibility = Visibility.Collapsed;
+                    try
+                    {
+                        string? error = await Task.Run(() => openCodexSession(session.Id));
+                        if (error is not null) { launchError.Text = error; launchError.Visibility = Visibility.Visible; }
+                    }
+                    catch { launchError.Text = "Nie udało się otworzyć Codex. Spróbuj ponownie lub skopiuj ID sesji."; launchError.Visibility = Visibility.Visible; }
+                    finally { open.IsEnabled = true; }
+                };
+                sessionHeading.Children.Add(open);
+            }
+            row.Children.Add(sessionHeading);
+            row.Children.Add(launchError);
             var meta = new DockPanel();
             var copy = new Button { Content = "Kopiuj ID", FontSize = 13, Foreground = new SolidColorBrush(InsightsUi.Blue) };
             copy.Click += (_, _) => { try { Clipboard.SetText(session.Id); copy.Content = "Skopiowano"; } catch (System.Runtime.InteropServices.ExternalException) { copy.Content = "Spróbuj ponownie"; } };
