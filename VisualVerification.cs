@@ -56,6 +56,30 @@ public static class VisualVerification
                 {
                     var details = main.InsightsForTest(i); await Task.Delay(180); Capture(details, "visual-" + names[i]);
                 }
+                var projects = main.InsightsForTest(1);
+                await Task.Delay(80);
+                var expander = Descendants(projects).OfType<Expander>().First();
+                expander.ApplyTemplate();
+                var toggle = (ToggleButton)expander.Template.FindName("HeaderToggle", expander);
+                toggle.IsChecked = true; await Task.Delay(60);
+                if (!expander.IsExpanded) throw new Exception("Project details toggle failed");
+                var analysisField = typeof(MainWindow).GetField("analysis", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var currentAnalysis = (AnalyticsSnapshot)analysisField.GetValue(main)!;
+                projects.UpdateDetails(currentAnalysis with { At = DateTimeOffset.Now }, SessionSnapshot.Empty);
+                projects.UpdateLayout();
+                if (!Descendants(projects).OfType<Expander>().First().IsExpanded) throw new Exception("Refresh collapsed project details");
+                projects.Width = 620; projects.Height = 440; await Task.Delay(80); Capture(projects, "visual-projects-narrow");
+                main.InsightsForTest(0); await Task.Delay(80); Capture(projects, "visual-history-narrow");
+                var scratch = new UsageHistory(Path.Combine(Settings.DataDirectory, "visual-empty-" + Guid.NewGuid() + ".json"));
+                var edge = new InsightsWindow(scratch); edge.Show(); await Task.Delay(80); Capture(edge, "visual-history-empty");
+                if (!Descendants(edge).OfType<TextBlock>().Any(t => t.Text == "Jeszcze bez odczytów")) throw new Exception("History empty state missing");
+                var now = DateTimeOffset.Now;
+                scratch.Samples.Add(new("Codex", "single", "Model z długą nazwą · pojedynczy odczyt", now.AddMinutes(-15), 42, null));
+                scratch.Samples.Add(new("Codex", "gaps", "Przerwy i reset", now.AddHours(-2), 25, 1));
+                scratch.Samples.Add(new("Codex", "gaps", "Przerwy i reset", now.AddHours(-2).AddMinutes(5), 30, 1));
+                scratch.Samples.Add(new("Codex", "gaps", "Przerwy i reset", now.AddMinutes(-40), 70, 1));
+                scratch.Samples.Add(new("Codex", "gaps", "Przerwy i reset", now.AddMinutes(-35), 0, 2));
+                edge.RefreshHistory(); await Task.Delay(80); Capture(edge, "visual-history-sparse"); edge.Close();
                 var gallery = new Window { Title = "Stany postaci · dane testowe", Width = 780, Height = 400,
                     Background = new SolidColorBrush(Color.FromRgb(24, 28, 35)), WindowStartupLocation = WindowStartupLocation.CenterScreen };
                 var grid = new UniformGrid { Rows = 2, Columns = 8, Margin = new Thickness(16) };
@@ -81,7 +105,7 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 7, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 11, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, NarrowWindow = true, EmptyAndSparseHistory = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }
