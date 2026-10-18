@@ -149,12 +149,9 @@ public sealed class MainWindow : Window
     static string UpdatedText(ProviderState state) => state.Updated.HasValue
         ? state.Updated.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss") : "Brak odczytu";
     static string QuotaDetail(UsageWindow window, ProviderState state) =>
-        (window.Group is null ? "" : window.Group + " · " + window.Label + "\n")
-        + (window.Expired ? "Termin resetu minął; czekam na aktualny odczyt.\nOstatnio: " : "")
-        + $"{window.Remaining:0.#}% pozostało · {window.Used:0.#}% wykorzystano\n"
-        + (window.BalanceText is null ? "" : window.BalanceText + "\n")
-        + $"{window.ResetText}\nOdczyt: {UpdatedText(state)}"
-        + (string.IsNullOrEmpty(window.DetailText) ? "" : "\n" + WidgetTips.Line(window.DetailText));
+        (window.Expired ? "Czekam na odczyt po resecie.\n" : "")
+        + (string.IsNullOrEmpty(window.DetailText) ? "" : WidgetTips.Line(window.DetailText) + "\n")
+        + $"Odczyt: {UpdatedText(state)}";
     static ResetPresentation Reset(UsageWindow window) => window.Renews
         ? ResetFormatter.Format(window.ResetAt, DateTimeOffset.Now, TimeZoneInfo.Local)
         : new("Bez resetu miesięcznego", "", "");
@@ -261,8 +258,23 @@ public sealed class MainWindow : Window
         if (insights is not null) { insights.Show(); insights.Activate(); return; }
         insights = new InsightsWindow(history) { Owner = this, Topmost = Topmost };
         insights.UpdateDetails(analysis, sessions);
+        insights.UpdateQuotas(codexState, claudeState);
         insights.Closed += (_, _) => insights = null;
         insights.Show();
+    }
+    void OpenProvider(string name, bool showSessions = false)
+    {
+        OpenInsights(); insights!.SelectProvider(name);
+        if (showSessions) insights.SelectSessions();
+    }
+    FrameworkElement ProviderLink(StackPanel content, ProviderState state)
+    {
+        if (state.Name is not ("Codex" or "Claude")) return content;
+        var button = new Button { Content = content, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetName(button, "Otwórz szczegóły " + state.Name);
+        SetTip(button, "Otwórz przegląd konta");
+        button.Click += (_, _) => OpenProvider(state.Name);
+        return button;
     }
     internal void SetCompactForTest(bool compact) { settings.Compact = compact; Render(); }
     internal InsightsWindow InsightsForTest(int tab) { OpenInsights(); insights!.SelectTab(tab); return insights; }
@@ -322,17 +334,13 @@ public sealed class MainWindow : Window
         catch (OperationCanceledException) { }
         finally { healthBusy = false; lastHealth = DateTimeOffset.Now; }
     }
-    string HealthDetail(string name)
-    {
-        if (name is not ("Codex" or "Claude")) return "";
-        var health = name == "Codex" ? codexHealth : claudeHealth;
-        return "\nUsługa: " + (!health.Available ? "brak odczytu" : health.Incident ? "incydent" : "działa") + "\n" + health.Detail;
-    }
     void LinkHealth(FrameworkElement target, string name)
     {
         if (name is not ("Codex" or "Claude")) return;
         target.Cursor = Cursors.Hand;
-        SetTip(target, "Status usługi " + name, HealthDetail(name).Trim() + "\nKliknij, aby otworzyć stronę statusu.");
+        var health = name == "Codex" ? codexHealth : claudeHealth;
+        SetTip(target, !health.Available ? "Status niedostępny" : health.Incident ? "Incydent usługi" : "Brak zgłoszonych awarii",
+            health.Incident ? health.Detail : "");
         target.MouseLeftButtonUp += (_, e) => { OpenUrl((name == "Codex" ? codexHealth : claudeHealth).Url); e.Handled = true; };
     }
     void AddHealth(StackPanel panel, string name)
@@ -369,8 +377,8 @@ public sealed class MainWindow : Window
             line.TextTrimming = TextTrimming.CharacterEllipsis; block.Children.Add(line);
         }
         if (active.Count > (settings.Compact ? 2 : 4)) block.Children.Add(Text("+ " + (active.Count - (settings.Compact ? 2 : 4)) + " więcej · szczegóły", 9, Muted));
-        SetTip(block, "Sesje " + providerName, WidgetTips.Sessions(active, sessions.ErrorFor(providerName)));
-        block.MouseLeftButtonUp += (_, e) => { OpenInsights(); insights?.SelectSessions(); e.Handled = true; };
+        SetTip(block, "Otwórz listę sesji", sessions.ErrorFor(providerName) ?? "");
+        block.MouseLeftButtonUp += (_, e) => { OpenProvider(providerName, true); e.Handled = true; };
         panel.Children.Add(block);
     }
     void AddMascot(StackPanel title, ProviderState provider)
@@ -379,6 +387,7 @@ public sealed class MainWindow : Window
         bool finished = finishedUntil.TryGetValue(provider.Name, out var until) && until > DateTimeOffset.Now;
         var mascot = new MascotView(provider.Name, MascotView.Choose(provider, sessions, finished), settings.AnimateMascots)
         { Width = 44, Height = 35, Margin = new Thickness(0, -5, 6, -5), VerticalAlignment = VerticalAlignment.Center };
+        mascot.ToolTip = null;
         title.Children.Insert(0, mascot);
     }
     void Render()
@@ -388,6 +397,7 @@ public sealed class MainWindow : Window
         pinButton.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
         brandSubtitle.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
         modeButton.Foreground = settings.Compact ? new SolidColorBrush(Mint) : Muted;
+        insights?.UpdateQuotas(codexState, claudeState);
         RefreshCard(0, codexState, CodexAccent); RefreshCard(1, claudeState, ClaudeAccent);
         RefreshCard(2, devinState, DevinAccent); RefreshCard(3, airState, AirAccent);
         RefreshCard(4, antigravityState, AntigravityAccent);
@@ -454,7 +464,7 @@ public sealed class MainWindow : Window
         title.Children.Add(Text(state.Name, 12, weight: FontWeights.SemiBold));
         AddMascot(title, state);
         if (!string.IsNullOrEmpty(state.Plan)) title.Children.Add(Text("  " + state.Plan.ToUpperInvariant(), 8, Muted));
-        header.Children.Add(title);
+        header.Children.Add(ProviderLink(title, state));
         var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Background = Brushes.Transparent };
         bool stale = Stale(state);
         var dot = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Fill = stale ? Brush("#E5B66A") : new SolidColorBrush(color), Margin = new Thickness(0, 0, 5, 0) };
@@ -495,7 +505,7 @@ public sealed class MainWindow : Window
 
             row.Children.Add(RemainingBar(window, state, GroupColor(window, color)));
             row.Children.Add(ResetBadge(window, GroupColor(window, color)));
-            SetTip(row, $"{state.Name} · {window.Label}", QuotaDetail(window, state));
+            SetTip(row, "Źródło danych", QuotaDetail(window, state));
             panel.Children.Add(row);
         }
         if (!settings.Compact && (state.Error is not null || stale))
@@ -522,11 +532,12 @@ public sealed class MainWindow : Window
         statusTarget.Child = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5,
             Fill = stale ? Brush("#EAC06C") : new SolidColorBrush(Mint), VerticalAlignment = VerticalAlignment.Center };
         LinkHealth(statusTarget, state.Name);
-        brand.Children.Add(statusTarget); header.Children.Add(brand);
+        var providerHeading = new StackPanel { Orientation = Orientation.Horizontal };
+        providerHeading.Children.Add(ProviderLink(brand, state)); providerHeading.Children.Add(statusTarget);
+        header.Children.Add(providerHeading);
         var remainingHeading = Text("Pozostało", 10, Muted); remainingHeading.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(remainingHeading, 1); header.Children.Add(remainingHeading);
-        SetTip(header, state.Name + (state.Plan.Length > 0 ? " · " + state.Plan.ToUpperInvariant() : ""),
-            state.Status + "\nOdczyt: " + UpdatedText(state) + HealthDetail(state.Name));
+        if (state.Name is not ("Codex" or "Claude")) SetTip(header, state.Plan, state.Status);
         panel.Children.Add(header);
         AddSessions(panel, state.Name);
         AddHealth(panel, state.Name);
@@ -552,7 +563,7 @@ public sealed class MainWindow : Window
             main.Children.Add(labels);
             var value = Text(window.Expired ? "—" : $"{window.Remaining:0}%", 22, QuotaColor(window, stale), FontWeights.SemiBold);
             Grid.SetColumn(value, 1); main.Children.Add(value); row.Children.Add(main);
-            SetTip(row, $"{state.Name} · {window.Label}", QuotaDetail(window, state));
+            SetTip(row, "Źródło danych", QuotaDetail(window, state));
             row.Children.Add(RemainingBar(window, state, GroupColor(window, color)));
             var reset = Reset(window);
             var resetLine = new Grid { Margin = new Thickness(0, 2, 0, 0), Background = Brushes.Transparent };
@@ -560,7 +571,7 @@ public sealed class MainWindow : Window
             var countdown = Text(reset.Countdown, 10, Muted); countdown.Margin = new Thickness(0, 0, 5, 0);
             countdown.TextWrapping = TextWrapping.Wrap; resetLine.Children.Add(countdown);
             var calendar = Text(reset.ShortCalendar, 10, Muted); Grid.SetColumn(calendar, 1); resetLine.Children.Add(calendar);
-            SetTip(resetLine, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText);
+            SetTip(resetLine, window.ResetText);
             row.Children.Add(resetLine); panel.Children.Add(row);
         }
         if (state.Windows.Count > 0 && stale)
@@ -612,7 +623,7 @@ public sealed class MainWindow : Window
         var badge = new Border { Background = Brush("#1C2129"), CornerRadius = new CornerRadius(7),
             Padding = new Thickness(settings.Compact ? 7 : 9, settings.Compact ? 5 : 8, settings.Compact ? 7 : 9, settings.Compact ? 5 : 8),
             Margin = new Thickness(0, settings.Compact ? 3 : 9, 0, 0) };
-        SetTip(badge, window.Renews ? "Odnowienie limitu" : "Dodatkowe kredyty", window.ResetText);
+        if (settings.Compact) SetTip(badge, window.ResetText);
         if (settings.Compact)
         {
             var line = new Grid(); line.ColumnDefinitions.Add(new ColumnDefinition());

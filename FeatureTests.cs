@@ -18,13 +18,6 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
-            var promptSession = new LiveSession("Codex", "tip", "# Files pasted by the user:\n" + new string('x', 20_000), "C:/work/short-project", "working");
-            string sessionTip = WidgetTips.Sessions(new[] { promptSession }, null);
-            Check(sessionTip.Contains("short-project · Pracuje") && !sessionTip.Contains("Files pasted") && sessionTip.Length < 150,
-                "Session tooltip never exposes pasted prompt as a title");
-            string manyTips = WidgetTips.Sessions(Enumerable.Range(0, 12).Select(i => promptSession with { Id = i.ToString(), State = i == 11 ? "waiting" : "working" }), null);
-            Check(manyTips.Split('\n').Length == 6 && manyTips.Contains("+8 pozostałych") && manyTips.StartsWith("short-project · Czeka"),
-                "Session hover prioritizes waiting tasks and bounds long session lists");
             string bounded = WidgetTips.Body(string.Join("\n", Enumerable.Repeat(new string('x', 10000), 30)));
             Check(bounded.Length <= 420 && bounded.EndsWith("…"), "Provider tooltip text has a hard display bound");
             Check(WidgetTips.Line("Short title\nLarge prompt body") == "Short title", "Details heading uses only first line");

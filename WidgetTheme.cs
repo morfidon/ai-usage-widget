@@ -9,6 +9,17 @@ public static class WidgetTheme
     {
         var resources = (ResourceDictionary)XamlReader.Parse("""
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style TargetType="Button">
+    <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#EDF2F7"/>
+    <Setter Property="Padding" Value="6,5"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+      <Border x:Name="HitArea" Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/></Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HitArea" Property="Background" Value="#263343"/></Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="HitArea" Property="Background" Value="#30455F"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="ToolTip">
     <Setter Property="Background" Value="#202B39"/><Setter Property="Foreground" Value="#EDF2F7"/>
     <Setter Property="BorderBrush" Value="#45576D"/><Setter Property="Padding" Value="13,11"/><Setter Property="FontSize" Value="12"/>

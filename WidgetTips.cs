@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Automation;
@@ -43,21 +43,6 @@ public static class WidgetTips
         }
         return Clip(string.Join("\n", lines), 420);
     }
-    public static string Sessions(IEnumerable<LiveSession> sessions, string? error)
-    {
-        var rows = sessions.OrderByDescending(s => s.State == "waiting").ThenByDescending(s => s.State == "working").ToList();
-        if (rows.Count == 0) return Line(error ?? "Brak aktywnych sesji.", 120);
-        var lines = rows.Take(4).Select(s =>
-        {
-            string project = Path.GetFileName(s.Directory.TrimEnd('\\', '/'));
-            if (string.IsNullOrWhiteSpace(project)) project = "Sesja";
-            // A session title can contain an entire prompt. Never copy it into a hover card.
-            return Line(project, 44) + " · " + s.StateLabel;
-        }).ToList();
-        if (rows.Count > 4) lines.Add($"+{rows.Count - 4} pozostałych");
-        lines.Add(error is null ? "Kliknij, aby zobaczyć szczegóły." : "Odczyt częściowy · kliknij po szczegóły.");
-        return string.Join("\n", lines);
-    }
     public static ToolTip Create(string title, string detail = "")
     {
         var content = new StackPanel { MaxWidth = 292 };
@@ -79,5 +64,16 @@ public static class WidgetTips
         ToolTipService.SetBetweenShowDelay(target, 1000);
         ToolTipService.SetShowDuration(target, 12000);
         ToolTipService.SetShowOnDisabled(target, true);
+    }
+    public static void SetOverflow(TextBlock target, string title, string detail)
+    {
+        Set(target, title, detail);
+        target.ToolTipOpening += (_, e) =>
+        {
+            var text = new FormattedText(target.Text, CultureInfo.CurrentUICulture, target.FlowDirection,
+                new Typeface(target.FontFamily, target.FontStyle, target.FontWeight, target.FontStretch),
+                target.FontSize, target.Foreground, VisualTreeHelper.GetDpi(target).PixelsPerDip);
+            if (text.WidthIncludingTrailingWhitespace <= target.ActualWidth) e.Handled = true;
+        };
     }
 }

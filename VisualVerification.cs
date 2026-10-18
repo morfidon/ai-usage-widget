@@ -43,6 +43,34 @@ public static class VisualVerification
                 Capture(main, "visual-compact");
                 var historyButton = Descendants(main).OfType<Button>().First(b => System.Windows.Automation.AutomationProperties.GetHelpText(b) == "Historia limitów i szczegóły");
                 historyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                // Clicking a provider must scope every tab, including sessions and token analysis.
+                foreach (var providerName in new[] { "Claude", "Codex" })
+                {
+                    var entry = Descendants(main).OfType<Button>().First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Otwórz szczegóły " + providerName);
+                    entry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(80);
+                    var scoped = Application.Current.Windows.OfType<InsightsWindow>().Single();
+                    var tabControl = Descendants(scoped).OfType<TabControl>().Single();
+                    if (scoped.SelectedProvider != providerName || tabControl.SelectedIndex != 0) throw new Exception("Provider click did not open its overview");
+                    Capture(scoped, "visual-overview-" + providerName.ToLowerInvariant());
+                    scoped.SelectSessions(); await Task.Delay(80);
+                    var sessionTexts = Descendants(scoped).OfType<TextBlock>().Select(t => t.Text).ToList();
+                    if (sessionTexts.Contains(providerName == "Claude" ? "Weryfikacja tłumaczeń" : "Przegląd interfejsu")) throw new Exception("Sessions leaked across providers");
+                    scoped.SelectTab(2); await Task.Delay(80);
+                    var modelTexts = Descendants(scoped).OfType<TextBlock>().Select(t => t.Text).ToList();
+                    if (!modelTexts.Contains(providerName.ToLowerInvariant()) || modelTexts.Contains(providerName == "Claude" ? "codex" : "claude")) throw new Exception("Models leaked across providers");
+                    if (providerName == "Claude") Capture(scoped, "visual-models-claude");
+                }
+                var scopedWindow = Application.Current.Windows.OfType<InsightsWindow>().Single();
+                var sampleAnalysis = (AnalyticsSnapshot)typeof(MainWindow).GetField("analysis", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
+                var sampleSessions = (SessionSnapshot)typeof(MainWindow).GetField("sessions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
+                var oldEntry = sampleAnalysis.Entries.First() with { At = DateTimeOffset.Now.AddDays(-2), Model = "older-model" };
+                scopedWindow.UpdateDetails(sampleAnalysis with { Entries = sampleAnalysis.Entries.Append(oldEntry).ToList() }, sampleSessions);
+                var periodChoice = Descendants(scopedWindow).OfType<ComboBox>().Single(c => System.Windows.Automation.AutomationProperties.GetName(c) == "Okres statystyk");
+                periodChoice.SelectedIndex = 1; await Task.Delay(60);
+                if (!Descendants(scopedWindow).OfType<TextBlock>().Any(t => t.Text == "older-model")) throw new Exception("Seven-day period did not include older model");
+                periodChoice.SelectedIndex = 0; await Task.Delay(60);
+                if (Descendants(scopedWindow).OfType<TextBlock>().Any(t => t.Text == "older-model")) throw new Exception("24-hour period leaked older model");
+                scopedWindow.UpdateDetails(sampleAnalysis, sampleSessions);
                 main.SetCompactForTest(false); await Task.Delay(200); Capture(main, "visual-full");
                 var scroll = Descendants(main).OfType<ScrollViewer>().First(s => s.Content is StackPanel);
                 if (scroll.ScrollableHeight > 120)
@@ -71,7 +99,7 @@ public static class VisualVerification
                 projects.Width = 620; projects.Height = 440; await Task.Delay(80); Capture(projects, "visual-projects-narrow");
                 main.InsightsForTest(0); await Task.Delay(80); Capture(projects, "visual-history-narrow");
                 var scratch = new UsageHistory(Path.Combine(Settings.DataDirectory, "visual-empty-" + Guid.NewGuid() + ".json"));
-                var edge = new InsightsWindow(scratch); edge.Show(); await Task.Delay(80); Capture(edge, "visual-history-empty");
+                var edge = new InsightsWindow(scratch); edge.SelectTab(0); edge.Show(); await Task.Delay(80); Capture(edge, "visual-history-empty");
                 if (!Descendants(edge).OfType<TextBlock>().Any(t => t.Text == "Jeszcze bez odczytów")) throw new Exception("History empty state missing");
                 var now = DateTimeOffset.Now;
                 scratch.Samples.Add(new("Codex", "single", "Model z długą nazwą · pojedynczy odczyt", now.AddMinutes(-15), 42, null));
@@ -93,13 +121,14 @@ public static class VisualVerification
                     }
                 gallery.Show(); await Task.Delay(200); Capture(gallery, "visual-mascots"); gallery.Close();
                 var tipTarget = Descendants(main).OfType<FrameworkElement>()
-                    .First(e => System.Windows.Automation.AutomationProperties.GetHelpText(e).StartsWith("Sesje Codex"));
+                    .First(e => System.Windows.Automation.AutomationProperties.GetHelpText(e).StartsWith("Otwórz listę sesji"));
+                if (((StackPanel)((ToolTip)tipTarget.ToolTip).Content).Children.OfType<TextBlock>().Any(t => t.Text.Contains("snake-game")))
+                    throw new Exception("Session tooltip repeats visible projects");
                 if (ToolTipService.GetInitialShowDelay(tipTarget) != 120 || ToolTipService.GetBetweenShowDelay(tipTarget) != 1000)
                     throw new Exception("Tooltip timing is inconsistent");
-                var longSession = new LiveSession("Codex", "long", "# Files pasted by the user:\n" + new string('x', 20000), "C:/work/usage-ai", "working");
                 var samples = new[] {
-                    ("sessions", "Sesje Codex", WidgetTips.Sessions(Enumerable.Range(0, 10).Select(i => longSession with { Id = i.ToString(), State = i == 9 ? "waiting" : "working" }), null)),
-                    ("quota", "Codex · Tydzień", "36% pozostało · 64% wykorzystano\nReset w środę o 11:20\nOdczyt: 18.10.2026 09:35"),
+                    ("sessions", "Otwórz listę sesji", ""),
+                    ("quota", "Źródło danych", "Odczyt: 18.10.2026 09:35"),
                     ("long", new string('T', 400), string.Join("\n", Enumerable.Repeat(new string('x', 1000), 40))) };
                 foreach (var (file, title, description) in samples)
                 {
@@ -123,7 +152,7 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 14, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 17, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

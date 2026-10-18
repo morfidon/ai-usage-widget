@@ -45,9 +45,19 @@ public sealed class InsightsWindow : Window
     readonly StackPanel historyBody = new() { Margin = new Thickness(6, 6, 6, 6) };
     readonly ComboBox provider = InsightsUi.Choice(new[] { "Codex", "Claude" });
     readonly ComboBox period = InsightsUi.Choice(new[] { "24 godziny", "7 dni" });
-    readonly StackPanel projectBody = new(), diagnosticBody = new(), sessionBody = new();
-    readonly ComboBox projectProvider = InsightsUi.Choice(new[] { "Codex", "Claude" });
-    readonly ComboBox projectPeriod = InsightsUi.Choice(new[] { "7 dni", "24 godziny" });
+    readonly StackPanel projectBody = new(), diagnosticBody = new(), sessionBody = new(), overviewBody = new();
+    readonly Dictionary<string, ProviderState> quotas = new();
+    bool overviewDirty = true;
+    public string SelectedProvider => (string)provider.SelectedItem;
+    DateTimeOffset Since => DateTimeOffset.Now.AddDays(period.SelectedIndex == 0 ? -1 : -7);
+    List<TokenEntry> Entries
+    {
+        get
+        {
+            var since = Since; var name = SelectedProvider;
+            return analysis.Entries.Where(e => e.Provider == name && e.At >= since).ToList();
+        }
+    }
     AnalyticsSnapshot analysis = AnalyticsSnapshot.Empty;
     SessionSnapshot sessions = SessionSnapshot.Empty;
     bool projectsDirty = true, diagnosticsDirty = true, sessionsDirty = true;
@@ -70,66 +80,145 @@ public sealed class InsightsWindow : Window
         FontFamily = new FontFamily("Segoe UI"); WindowStartupLocation = WindowStartupLocation.CenterOwner;
         WidgetTheme.Apply(this);
         var root = new DockPanel { Margin = new Thickness(22) }; Content = root;
-        var title = InsightsUi.Text("Aktywność AI", 24); title.FontWeight = FontWeights.SemiBold;
+        var title = InsightsUi.Text("Aktywność", 24); title.FontWeight = FontWeights.SemiBold;
         DockPanel.SetDock(title, Dock.Top); root.Children.Add(title);
         title.Margin = new Thickness(0, 0, 0, 18);
-        AutomationProperties.SetName(provider, "Dostawca limitów"); AutomationProperties.SetName(period, "Okres historii");
-        AutomationProperties.SetName(projectProvider, "Dostawca projektów"); AutomationProperties.SetName(projectPeriod, "Okres projektów");
+        AutomationProperties.SetName(provider, "Dostawca"); AutomationProperties.SetName(period, "Okres statystyk");
+        var filters = new StackPanel { Orientation = Orientation.Horizontal };
+        filters.Children.Add(provider); filters.Children.Add(period);
+        DockPanel.SetDock(filters, Dock.Top); root.Children.Add(filters);
         root.Children.Add(tabs);
-        var page = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
-        var filters = new StackPanel { Orientation = Orientation.Horizontal }; filters.Children.Add(provider); filters.Children.Add(period);
-        DockPanel.SetDock(filters, Dock.Top); page.Children.Add(filters);
-        page.Children.Add(new ScrollViewer { Content = historyBody, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        tabs.Items.Add(new TabItem { Header = "Limity", Content = page, Padding = new Thickness(14, 8, 14, 8) });
-        var projects = new DockPanel { Margin = new Thickness(6, 16, 6, 6) };
-        var projectFilters = new StackPanel { Orientation = Orientation.Horizontal };
-        projectFilters.Children.Add(projectProvider); projectFilters.Children.Add(projectPeriod);
-        DockPanel.SetDock(projectFilters, Dock.Top); projects.Children.Add(projectFilters);
-        projects.Children.Add(new ScrollViewer { Content = projectBody, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        tabs.Items.Add(new TabItem { Header = "Projekty", Content = projects, Padding = new Thickness(14, 8, 14, 8) });
-        tabs.Items.Add(new TabItem { Header = "Claude · analiza", Content = new ScrollViewer { Content = diagnosticBody, Margin = new Thickness(6, 16, 6, 6), VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, Padding = new Thickness(14, 8, 14, 8) });
-        tabs.Items.Add(new TabItem { Header = "Sesje", Content = new ScrollViewer { Content = sessionBody, Margin = new Thickness(6, 16, 6, 6), VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, Padding = new Thickness(14, 8, 14, 8) });
-        projectProvider.SelectionChanged += (_, _) => RefreshProjects(); projectPeriod.SelectionChanged += (_, _) => RefreshProjects();
-        provider.SelectionChanged += (_, _) => RefreshHistory(); period.SelectionChanged += (_, _) => RefreshHistory();
+        void Tab(string label, StackPanel body) => tabs.Items.Add(new TabItem { Header = label,
+            Content = new ScrollViewer { Content = body, Margin = new Thickness(6, 14, 6, 6), VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+            Padding = new Thickness(11, 8, 11, 8) });
+        Tab("Przegląd", overviewBody); Tab("Limity", historyBody); Tab("Projekty", projectBody);
+        Tab("Modele i tokeny", diagnosticBody); Tab("Sesje", sessionBody);
+        provider.SelectionChanged += (_, _) => ChangeScope(); period.SelectionChanged += (_, _) => ChangeScope();
         tabs.SelectionChanged += (_, e) => { if (ReferenceEquals(e.Source, tabs)) RefreshSelectedDetails(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
-        RefreshHistory();
+        ChangeScope();
     }
-    public void SelectSessions() => tabs.SelectedIndex = 3;
-    internal void SelectTab(int tab) => tabs.SelectedIndex = tab;
+    void ChangeScope()
+    {
+        Title = "AI Usage · " + SelectedProvider;
+        overviewDirty = projectsDirty = diagnosticsDirty = sessionsDirty = true;
+        RefreshHistory(); RefreshSelectedDetails();
+    }
+    public void SelectProvider(string name, bool overview = true)
+    {
+        if (name is not ("Codex" or "Claude")) return;
+        provider.SelectedItem = name;
+        if (overview) tabs.SelectedIndex = 0;
+        RefreshSelectedDetails();
+    }
+    public void SelectSessions() => tabs.SelectedIndex = 4;
+    internal void SelectTab(int tab) => tabs.SelectedIndex = tab + 1;
+    public void UpdateQuotas(params ProviderState[] states)
+    {
+        foreach (var state in states)
+        {
+            if (!quotas.TryGetValue(state.Name, out var old) || !ReferenceEquals(old, state))
+            { quotas[state.Name] = state; overviewDirty = true; }
+        }
+        RefreshSelectedDetails();
+    }
     public void UpdateDetails(AnalyticsSnapshot analytics, SessionSnapshot snapshot)
     {
         if (!ReferenceEquals(analysis, analytics))
         {
             diagnosticsDirty |= !ReferenceEquals(analysis.Entries, analytics.Entries) || !ReferenceEquals(analysis.Tools, analytics.Tools)
-                || analysis.Loading != analytics.Loading || analysis.Skipped != analytics.Skipped;
-            analysis = analytics; projectsDirty = true;
+                || analysis.Loading != analytics.Loading || analysis.Skipped != analytics.Skipped || analysis.At != analytics.At;
+            analysis = analytics; projectsDirty = overviewDirty = true;
         }
-        if (!ReferenceEquals(sessions, snapshot)) { sessions = snapshot; sessionsDirty = true; }
+        if (!ReferenceEquals(sessions, snapshot)) { sessions = snapshot; sessionsDirty = overviewDirty = true; }
         RefreshSelectedDetails();
     }
     void RefreshSelectedDetails()
     {
-        if (tabs.SelectedIndex == 1 && projectsDirty) RefreshProjects();
-        else if (tabs.SelectedIndex == 2 && diagnosticsDirty) RefreshDiagnostics();
-        else if (tabs.SelectedIndex == 3 && sessionsDirty) RefreshSessions();
+        if (tabs.SelectedIndex == 0 && overviewDirty) RefreshOverview();
+        else if (tabs.SelectedIndex == 2 && projectsDirty) RefreshProjects();
+        else if (tabs.SelectedIndex == 3 && diagnosticsDirty) RefreshDiagnostics();
+        else if (tabs.SelectedIndex == 4 && sessionsDirty) RefreshSessions();
     }
     public static string Tokens(long n) => n >= 1_000_000 ? $"{n / 1_000_000.0:0.##} mln" : n >= 1000 ? $"{n / 1000.0:0.#} tys." : n.ToString("N0");
     public static string Count(int n, string one, string few, string many) => n.ToString("N0") + " "
         + (n == 1 ? one : n % 10 is >= 2 and <= 4 && n % 100 is not (>= 12 and <= 14) ? few : many);
+    static Grid ValueRow(string label, string value)
+    {
+        var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = InsightsUi.Text(label, 14); name.Margin = new Thickness(0, 3, 14, 6);
+        name.TextWrapping = TextWrapping.NoWrap; name.TextTrimming = TextTrimming.CharacterEllipsis;
+        row.Children.Add(name);
+        var amount = InsightsUi.Text(value, 14); amount.FontWeight = FontWeights.SemiBold;
+        Grid.SetColumn(amount, 1); row.Children.Add(amount); return row;
+    }
+    Button Navigate(string text, int tab)
+    {
+        var button = new Button { Content = text + "  →", HorizontalAlignment = HorizontalAlignment.Left,
+            Foreground = new SolidColorBrush(SelectedProvider == "Codex" ? InsightsUi.Blue : InsightsUi.Purple), Margin = new Thickness(0, 6, 0, 6) };
+        button.Click += (_, _) => tabs.SelectedIndex = tab; return button;
+    }
+    void RefreshOverview()
+    {
+        overviewDirty = false; overviewBody.Children.Clear();
+        var live = sessions.Sessions.Where(s => s.Provider == SelectedProvider).ToList();
+        int waiting = live.Count(s => s.State == "waiting"), working = live.Count(s => s.State == "working");
+        var sessionBlock = new StackPanel();
+        sessionBlock.Children.Add(InsightsUi.Text("Sesje teraz", 16));
+        sessionBlock.Children.Add(InsightsUi.Text(sessions.ErrorFor(SelectedProvider) is not null && live.Count == 0 ? "Brak odczytu" : sessions.At == DateTimeOffset.MinValue ? "Oczekiwanie na odczyt" : $"Pracuje: {working} · Czeka: {waiting}", 14));
+        if (waiting > 0)
+        {
+            var waitingProjects = string.Join(", ", live.Where(s => s.State == "waiting")
+                .Select(s => System.IO.Path.GetFileName(s.Directory.TrimEnd('\\', '/'))).Distinct().Take(3));
+            sessionBlock.Children.Add(InsightsUi.Text(waitingProjects, 12, InsightsUi.Brush("#F1C879")));
+        }
+        if (sessions.ErrorFor(SelectedProvider) is string error) sessionBlock.Children.Add(InsightsUi.Text(error, 12, InsightsUi.Muted));
+        sessionBlock.Children.Add(Navigate(waiting > 0 ? "Sprawdź oczekujące sesje" : "Otwórz sesje", 4));
+        var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition());
+        var liveCard = InsightsUi.Card(sessionBlock); liveCard.Margin = new Thickness(0, 0, 6, 12);
+        top.Children.Add(liveCard); overviewBody.Children.Add(top);
+        if (quotas.TryGetValue(SelectedProvider, out var state) && state.Windows.Count > 0)
+        {
+            var quota = new StackPanel();
+            quota.Children.Add(InsightsUi.Text("Pozostały limit" + (state.Plan.Length > 0 ? " · " + state.Plan : ""), 16));
+            foreach (var window in state.Windows)
+            {
+                quota.Children.Add(ValueRow((window.Group is null ? "" : window.Group + " · ") + window.Label, window.Expired ? "—" : $"{window.Remaining:0.#}%"));
+                quota.Children.Add(InsightsUi.Text(window.Renews ? ResetFormatter.Format(window.ResetAt, DateTimeOffset.Now, TimeZoneInfo.Local).Countdown : "Bez resetu miesięcznego", 11, InsightsUi.Muted));
+            }
+            if (!state.Connected || !state.Updated.HasValue || DateTimeOffset.Now - state.Updated > TimeSpan.FromMinutes(10))
+                quota.Children.Add(InsightsUi.Text("Ostatni zapis · oczekiwanie na aktualny odczyt", 12, InsightsUi.Brush("#F1C879")));
+            quota.Children.Add(Navigate("Historia limitów", 1));
+            var quotaCard = InsightsUi.Card(quota); quotaCard.Margin = new Thickness(6, 0, 0, 12); Grid.SetColumn(quotaCard, 1); top.Children.Add(quotaCard);
+        }
+        else { var link = Navigate("Historia limitów", 1); Grid.SetColumn(link, 1); top.Children.Add(link); }
+        var entries = Entries;
+        overviewBody.Children.Add(InsightsUi.Text("Lokalna aktywność · " + (string)period.SelectedItem, 16));
+        if (analysis.Loading) overviewBody.Children.Add(InsightsUi.Text("Indeksowanie… wyniki częściowe", 12, InsightsUi.Muted));
+        overviewBody.Children.Add(InsightsUi.Metrics(("Tokeny", Tokens(entries.Sum(e => e.Total))),
+            ("Odpowiedzi", entries.Count.ToString("N0")), ("Projekty", entries.Select(e => e.Project).Distinct().Count().ToString("N0"))));
+        if (entries.Count > 0)
+        {
+            var projects = new StackPanel(); projects.Children.Add(InsightsUi.Text("Najwięcej tokenów", 14, InsightsUi.Muted));
+            foreach (var group in entries.GroupBy(e => e.Project).OrderByDescending(g => g.Sum(e => e.Total)).Take(3))
+                projects.Children.Add(ValueRow(System.IO.Path.GetFileName(group.Key.TrimEnd('\\', '/')), Tokens(group.Sum(e => e.Total))));
+            projects.Children.Add(Navigate("Wszystkie projekty", 2)); overviewBody.Children.Add(InsightsUi.Card(projects));
+        }
+        else overviewBody.Children.Add(InsightsUi.Text("Brak zapisanych odpowiedzi w tym okresie.", 12, InsightsUi.Muted));
+        overviewBody.Children.Add(Navigate("Modele i skład tokenów", 3));
+    }
     void RefreshProjects()
     {
         projectsDirty = false;
         projectBody.Children.Clear();
-        string name = (string)projectProvider.SelectedItem;
-        var since = DateTimeOffset.Now.AddDays(projectPeriod.SelectedIndex == 0 ? -7 : -1);
-        var entries = analysis.Entries.Where(e => e.Provider == name && e.At >= since).ToList();
+        string name = SelectedProvider;
+        var entries = Entries;
         long total = entries.Sum(e => e.Total);
         var groups = entries.GroupBy(e => e.Project).OrderByDescending(g => g.Sum(e => e.Total)).ToList();
         projectBody.Children.Add(InsightsUi.Metrics(("Tokeny", Tokens(total)), ("Projekty", groups.Count.ToString()),
             ("Sesje", entries.Select(e => e.Session).Distinct().Count().ToString())));
         var note = InsightsUi.Text("Udział w lokalnych tokenach · nie w limicie abonamentu", 11, InsightsUi.Muted);
-        WidgetTips.Set(note, "Tokeny z lokalnych rozmów", "To nie jest rachunek ani procent abonamentu.\nCeny modeli i koszt cache są różne.");
         projectBody.Children.Add(note);
         if (analysis.Loading) projectBody.Children.Add(InsightsUi.Text("Indeksowanie… wyniki częściowe", 12, InsightsUi.Muted));
         foreach (var g in groups.Take(20))
@@ -163,21 +252,35 @@ public sealed class InsightsWindow : Window
     {
         diagnosticsDirty = false;
         diagnosticBody.Children.Clear();
-        var entries = analysis.Entries.Where(e => e.Provider == "Claude").ToList();
-        diagnosticBody.Children.Add(InsightsUi.Text("Claude · ostatnie 7 dni", 19));
+        var since = Since; var selected = SelectedProvider;
+        var entries = Entries;
+        diagnosticBody.Children.Add(InsightsUi.Text("Skład zużycia tokenów", 19));
         if (analysis.Loading) diagnosticBody.Children.Add(InsightsUi.Text("Indeksowanie… wyniki częściowe", 12, InsightsUi.Muted));
         long input = entries.Sum(e => e.Input + e.Cached + e.CacheWrite), cached = entries.Sum(e => e.Cached), total = entries.Sum(e => e.Total);
         diagnosticBody.Children.Add(InsightsUi.Card(InsightsUi.Metrics(("Tokeny", Tokens(total)), ("Odpowiedzi", entries.Count.ToString("N0")),
             ("Sesje", entries.Select(e => e.Session).Distinct().Count().ToString("N0")))));
-        diagnosticBody.Children.Add(InsightsUi.Card(InsightsUi.Metrics(("Wejście z cache", $"{(input > 0 ? 100.0 * cached / input : 0):0.#}%"),
-            ("Kontekst >200 tys.", entries.Count(e => e.Input + e.Cached + e.CacheWrite > 200_000).ToString("N0")),
-            ("Tokeny subagentów", Tokens(entries.Where(e => e.Subagent).Sum(e => e.Total))))));
-        var explanation = InsightsUi.Text("Statystyki lokalnych odpowiedzi, nie procent abonamentu. Cache pokazuje udział odczytanych tokenów w całym wejściu. Duży kontekst to liczba odpowiedzi z wejściem powyżej 200 tys. tokenów. Stały kontekst (instrukcje i narzędzia) sprawdzisz w /usage w Claude Code.", 12, InsightsUi.Muted);
+        diagnosticBody.Children.Add(InsightsUi.Card(InsightsUi.Metrics(("Wejście bez cache", Tokens(entries.Sum(e => e.Input))),
+            ("Odczyt cache", Tokens(cached)), ("Wyjście", Tokens(entries.Sum(e => e.Output))))));
+        if (SelectedProvider == "Claude") diagnosticBody.Children.Add(InsightsUi.Metrics(("Zapis cache", Tokens(entries.Sum(e => e.CacheWrite))),
+            ("Tokeny subagentów", Tokens(entries.Where(e => e.Subagent).Sum(e => e.Total)))));
+        diagnosticBody.Children.Add(InsightsUi.Text(input > 0 ? $"{100.0 * cached / input:0.#}% wejścia odczytano z cache" : "Brak danych wejścia", 12, InsightsUi.Muted));
+        diagnosticBody.Children.Add(InsightsUi.Text("Modele", 17));
+        foreach (var model in entries.GroupBy(e => e.Model).OrderByDescending(g => g.Sum(e => e.Total)))
+        {
+            var content = new StackPanel();
+            content.Children.Add(ValueRow(model.Key, Tokens(model.Sum(e => e.Total)) + " tokenów"));
+            content.Children.Add(InsightsUi.Text($"{Count(model.Count(), "odpowiedź", "odpowiedzi", "odpowiedzi")} · {Count(model.Select(e => e.Session).Distinct().Count(), "sesja", "sesje", "sesji")}", 11, InsightsUi.Muted));
+            diagnosticBody.Children.Add(InsightsUi.Card(content));
+        }
+        if (entries.Count == 0) diagnosticBody.Children.Add(InsightsUi.Text("Brak zapisanych odpowiedzi w tym okresie.", 12, InsightsUi.Muted));
+        var explanation = InsightsUi.Text("Tokeny pochodzą z lokalnych zapisów rozmów. Nie określają procentu abonamentu ani kosztu. Wejście bez cache, odczyt cache, zapis cache i wyjście to rozłączne części sumy. Liczba wywołań narzędzi nie określa ich kosztu."
+            + (SelectedProvider == "Claude" ? $"\nWejście >200 tys. tokenów: {Count(entries.Count(e => e.Input + e.Cached + e.CacheWrite > 200_000), "odpowiedź", "odpowiedzi", "odpowiedzi")}. Stały kontekst sprawdzisz w /usage w Claude Code." : ""), 12, InsightsUi.Muted);
         diagnosticBody.Children.Add(Details("help", "Jak czytać te dane", explanation));
         foreach (var category in new[] { "MCP", "Umiejętności", "Subagenci" })
         {
             var content = new StackPanel();
-            var groups = analysis.Tools.Where(t => t.Provider == "Claude" && t.Kind == category).GroupBy(t => t.Name).OrderByDescending(g => g.Count()).ToList();
+            var groups = analysis.Tools.Where(t => t.Provider == selected && t.At >= since && t.Kind == category).GroupBy(t => t.Name).OrderByDescending(g => g.Count()).ToList();
+            if (groups.Count == 0) continue;
             foreach (var g in groups.Take(10))
             {
                 var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -185,9 +288,8 @@ public sealed class InsightsWindow : Window
                 var count = InsightsUi.Text(Count(g.Count(), "wywołanie", "wywołania", "wywołań"), 12, InsightsUi.Muted);
                 Grid.SetColumn(count, 1); row.Children.Add(count); content.Children.Add(row);
             }
-            if (groups.Count == 0) content.Children.Add(InsightsUi.Text("Brak wywołań", 12, InsightsUi.Muted));
             if (groups.Count > 10) content.Children.Add(InsightsUi.Text($"10 z {groups.Count} narzędzi", 11, InsightsUi.Muted));
-            var section = Details("tools:" + category, $"{category} · {Count(groups.Sum(g => g.Count()), "wywołanie", "wywołania", "wywołań")}", content, groups.Count > 0);
+            var section = Details(SelectedProvider + ":tools:" + category, $"{category} · {Count(groups.Sum(g => g.Count()), "wywołanie", "wywołania", "wywołań")}", content);
             diagnosticBody.Children.Add(InsightsUi.Card(section));
         }
     }
@@ -197,9 +299,8 @@ public sealed class InsightsWindow : Window
         sessionsDirty = false;
         sessionBody.Children.Clear();
         sessionBody.Children.Add(InsightsUi.Text("Aktywne sesje na tym komputerze", 19));
-        foreach (var name in new[] { "Codex", "Claude" })
+        foreach (var name in new[] { SelectedProvider })
         {
-            sessionBody.Children.Add(InsightsUi.Text(name, 16, new SolidColorBrush(name == "Codex" ? InsightsUi.Blue : InsightsUi.Purple)));
             var rows = sessions.Sessions.Where(s => s.Provider == name).OrderByDescending(s => s.State == "waiting").ToList();
             foreach (var s in rows)
             {
@@ -210,7 +311,7 @@ public sealed class InsightsWindow : Window
                 var title = InsightsUi.Text(WidgetTips.Line(s.Name, 100), 14); title.FontWeight = FontWeights.SemiBold; title.Margin = new Thickness(0, 3, 14, 6); heading.Children.Add(title);
                 content.Children.Add(heading);
                 var path = InsightsUi.Text(s.Directory, 11, InsightsUi.Muted); path.TextWrapping = TextWrapping.NoWrap;
-                path.TextTrimming = TextTrimming.CharacterEllipsis; WidgetTips.Set(path, "Folder sesji", s.Directory); content.Children.Add(path);
+                path.TextTrimming = TextTrimming.CharacterEllipsis; WidgetTips.SetOverflow(path, "Folder sesji", s.Directory); content.Children.Add(path);
                 if (s.Reason.Length > 0) content.Children.Add(InsightsUi.Text(s.Reason, 12, InsightsUi.Muted));
                 sessionBody.Children.Add(InsightsUi.Card(content));
             }
@@ -247,7 +348,6 @@ public sealed class InsightsWindow : Window
             historyBody.Children.Add(InsightsUi.Card(content));
         }
         var help = InsightsUi.Text("Najedź na wykres, aby zobaczyć odczyt. Przerwy oznaczają reset lub brak danych.", 11, InsightsUi.Muted);
-        WidgetTips.Set(help, "Historia limitów", "Rzeczywiste odczyty konta · czas lokalny.\nPrzerwy oznaczają reset lub brak danych.");
         historyBody.Children.Add(help);
     }
 }
@@ -282,7 +382,7 @@ public sealed class HistoryChart : FrameworkElement
             if (ReferenceEquals(nearest, hover)) return;
             hover = nearest;
             if (nearest is null) ToolTip = null;
-            else WidgetTips.Set(this, nearest.Label, $"{nearest.Used:0.#}% wykorzystano · {100 - nearest.Used:0.#}% pozostało\n{nearest.At.LocalDateTime:dd.MM.yyyy HH:mm}");
+            else WidgetTips.Set(this, $"{nearest.Used:0.#}% wykorzystano", $"{nearest.At.LocalDateTime:dd.MM.yyyy HH:mm}");
             InvalidateVisual();
         };
         MouseLeave += (_, _) => { if (hover is null) return; hover = null; ToolTip = null; InvalidateVisual(); };
