@@ -96,7 +96,33 @@ public static class VisualVerification
                 projects.UpdateDetails(currentAnalysis with { At = DateTimeOffset.Now }, SessionSnapshot.Empty);
                 projects.UpdateLayout();
                 if (!Descendants(projects).OfType<Expander>().First().IsExpanded) throw new Exception("Refresh collapsed project details");
+                Capture(projects, "visual-project-composition");
                 projects.Width = 620; projects.Height = 440; await Task.Delay(80); Capture(projects, "visual-projects-narrow");
+                var drillRows = Enumerable.Range(1, 20).Select(i => new TokenEntry("Codex", "O:/projects/deep-project", "test-" + i,
+                    i % 2 == 0 ? "model-A" : "model-B", DateTimeOffset.Now, i * 100, i * 1000, 0, i * 10, false)).ToList();
+                drillRows.Add(new("Codex", "O:/projects/deep-project", "test-20", "model-C", DateTimeOffset.Now, 100, 0, 0, 0, false));
+                drillRows.Add(new("Claude", "O:/projects/deep-project", "test-20", "foreign-model", DateTimeOffset.Now, 9000000, 0, 0, 0, false));
+                projects.UpdateDetails(currentAnalysis with { Entries = drillRows }, SessionSnapshot.Empty);
+                projects.Width = 820; projects.Height = 760; await Task.Delay(80); Capture(projects, "visual-projects-ranking-entry");
+                var projectLink = Descendants(projects).OfType<Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Otwórz projekt O:/projects/deep-project");
+                projectLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(80);
+                var rankTexts = Descendants(projects).OfType<TextBlock>().Select(t => t.Text).ToList();
+                if (!rankTexts.Contains("Sesja test-20") || rankTexts.Contains("Sesja test-1") || rankTexts.Contains("foreign-model")) throw new Exception("Project session ranking or pagination is wrong");
+                var firstSession = Descendants(projects).OfType<Expander>().First(); firstSession.IsExpanded = true;
+                await Task.Delay(60);
+                if (!Descendants(projects).OfType<TextBlock>().Any(t => t.Text == "model-C")) throw new Exception("Mixed-model session breakdown missing");
+                Capture(projects, "visual-project-sessions");
+                var nextPage = Descendants(projects).OfType<Button>().First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Następna strona sesji");
+                nextPage.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(60);
+                if (!Descendants(projects).OfType<TextBlock>().Any(t => t.Text == "Sesja test-1")) throw new Exception("Next session page is inaccessible");
+                var modelRanking = Descendants(projects).OfType<Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Ranking modeli projektu");
+                modelRanking.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(60);
+                rankTexts = Descendants(projects).OfType<TextBlock>().Select(t => t.Text).ToList();
+                if (!rankTexts.Contains("model-A") || rankTexts.IndexOf("model-A") > rankTexts.IndexOf("model-B") || rankTexts.Contains("foreign-model")) throw new Exception("Project model ranking is not scoped or sorted");
+                Capture(projects, "visual-project-models");
+                projects.Width = 620; projects.Height = 440; await Task.Delay(60); Capture(projects, "visual-project-models-narrow");
+                var goBack = Descendants(projects).OfType<Button>().Single(b => b.Content as string == "← Projekty");
+                goBack.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); projects.UpdateDetails(currentAnalysis, sampleSessions);
                 main.InsightsForTest(0); await Task.Delay(80); Capture(projects, "visual-history-narrow");
                 var scratch = new UsageHistory(Path.Combine(Settings.DataDirectory, "visual-empty-" + Guid.NewGuid() + ".json"));
                 var edge = new InsightsWindow(scratch); edge.SelectTab(0); edge.Show(); await Task.Delay(80); Capture(edge, "visual-history-empty");
@@ -152,7 +178,7 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 17, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 22, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

@@ -17,6 +17,7 @@ public static class WidgetTheme
       <ControlTemplate.Triggers>
         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HitArea" Property="Background" Value="#263343"/></Trigger>
         <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="HitArea" Property="Background" Value="#30455F"/></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="HitArea" Property="Opacity" Value="0.4"/></Trigger>
       </ControlTemplate.Triggers>
     </ControlTemplate></Setter.Value></Setter>
   </Style>

@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Automation;
+using System.Threading.Tasks;
 
 namespace AIUsageWidget;
 
@@ -47,6 +48,13 @@ public sealed class InsightsWindow : Window
     readonly ComboBox period = InsightsUi.Choice(new[] { "24 godziny", "7 dni" });
     readonly StackPanel projectBody = new(), diagnosticBody = new(), sessionBody = new(), overviewBody = new();
     readonly Dictionary<string, ProviderState> quotas = new();
+    string? selectedProject, selectedProjectProvider;
+    bool projectModels;
+    int projectPage;
+    readonly Dictionary<string, string> sessionTitles = new();
+    readonly HashSet<string> requestedTitles = new();
+    bool closed;
+    readonly bool allowSessionTitles;
     bool overviewDirty = true;
     public string SelectedProvider => (string)provider.SelectedItem;
     DateTimeOffset Since => DateTimeOffset.Now.AddDays(period.SelectedIndex == 0 ? -1 : -7);
@@ -70,8 +78,9 @@ public sealed class InsightsWindow : Window
         view.Collapsed += (_, _) => expanded[key] = false;
         return view;
     }
-    public InsightsWindow(UsageHistory history)
+    public InsightsWindow(UsageHistory history, bool allowSessionTitles = true)
     {
+        this.allowSessionTitles = allowSessionTitles;
         this.history = history;
         Title = "AI Usage · szczegóły"; Width = 820; Height = 760; MinWidth = 620; MinHeight = 440;
         MaxHeight = SystemParameters.WorkArea.Height; MaxWidth = SystemParameters.WorkArea.Width;
@@ -96,10 +105,13 @@ public sealed class InsightsWindow : Window
         provider.SelectionChanged += (_, _) => ChangeScope(); period.SelectionChanged += (_, _) => ChangeScope();
         tabs.SelectionChanged += (_, e) => { if (ReferenceEquals(e.Source, tabs)) RefreshSelectedDetails(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
+        Closed += (_, _) => closed = true;
         ChangeScope();
     }
     void ChangeScope()
     {
+        if (selectedProjectProvider != SelectedProvider) selectedProject = null;
+        projectPage = 0;
         Title = "AI Usage · " + SelectedProvider;
         overviewDirty = projectsDirty = diagnosticsDirty = sessionsDirty = true;
         RefreshHistory(); RefreshSelectedDetails();
@@ -130,7 +142,7 @@ public sealed class InsightsWindow : Window
                 || analysis.Loading != analytics.Loading || analysis.Skipped != analytics.Skipped || analysis.At != analytics.At;
             analysis = analytics; projectsDirty = overviewDirty = true;
         }
-        if (!ReferenceEquals(sessions, snapshot)) { sessions = snapshot; sessionsDirty = overviewDirty = true; }
+        if (!ReferenceEquals(sessions, snapshot)) { sessions = snapshot; sessionsDirty = overviewDirty = true; projectsDirty |= selectedProject is not null; }
         RefreshSelectedDetails();
     }
     void RefreshSelectedDetails()
@@ -212,13 +224,14 @@ public sealed class InsightsWindow : Window
     {
         projectsDirty = false;
         projectBody.Children.Clear();
+        if (selectedProject is not null) { RenderProject(); return; }
         string name = SelectedProvider;
         var entries = Entries;
         long total = entries.Sum(e => e.Total);
         var groups = entries.GroupBy(e => e.Project).OrderByDescending(g => g.Sum(e => e.Total)).ToList();
         projectBody.Children.Add(InsightsUi.Metrics(("Tokeny", Tokens(total)), ("Projekty", groups.Count.ToString()),
             ("Sesje", entries.Select(e => e.Session).Distinct().Count().ToString())));
-        var note = InsightsUi.Text("Udział w lokalnych tokenach · nie w limicie abonamentu", 11, InsightsUi.Muted);
+        var note = InsightsUi.Text("Udział w tokenach z tego komputera", 13, InsightsUi.Muted);
         projectBody.Children.Add(note);
         if (analysis.Loading) projectBody.Children.Add(InsightsUi.Text("Indeksowanie… wyniki częściowe", 12, InsightsUi.Muted));
         foreach (var g in groups.Take(20))
@@ -229,23 +242,160 @@ public sealed class InsightsWindow : Window
             var heading = new Grid(); heading.ColumnDefinitions.Add(new ColumnDefinition());
             heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             string project = System.IO.Path.GetFileName(g.Key.TrimEnd('\\', '/'));
-            var title = InsightsUi.Text(project, 15); title.FontWeight = FontWeights.SemiBold;
+            var title = InsightsUi.Text(project, 16); title.FontWeight = FontWeights.SemiBold;
             title.TextWrapping = TextWrapping.NoWrap; title.TextTrimming = TextTrimming.CharacterEllipsis;
-            title.Margin = new Thickness(0, 0, 14, 6); WidgetTips.Set(title, "Folder projektu", g.Key); heading.Children.Add(title);
-            var amount = InsightsUi.Text($"{Tokens(tokens)}  ·  {share:0.#}%", 14); Grid.SetColumn(amount, 1); heading.Children.Add(amount);
+            title.Margin = new Thickness(0, 0, 14, 6);
+            var open = ActionButton(title, () => OpenProject(g.Key)); open.Padding = new Thickness(0);
+            AutomationProperties.SetName(open, "Otwórz projekt " + g.Key); heading.Children.Add(open);
+            var amount = InsightsUi.Text($"{Tokens(tokens)} tokenów  ·  {share:0.#}%", 15); Grid.SetColumn(amount, 1); heading.Children.Add(amount);
             box.Children.Add(heading);
             box.Children.Add(new ProgressBar { Value = share, Height = 5, Margin = new Thickness(0, 4, 0, 8),
                 Foreground = new SolidColorBrush(name == "Codex" ? InsightsUi.Blue : InsightsUi.Purple), Background = InsightsUi.Line, BorderThickness = new Thickness(0) });
-            var detail = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-            detail.Children.Add(InsightsUi.Text($"Wejście: {Tokens(g.Sum(e => e.Input))}   ·   Wyjście: {Tokens(g.Sum(e => e.Output))}", 12, InsightsUi.Muted));
-            detail.Children.Add(InsightsUi.Text($"Odczyt cache: {Tokens(g.Sum(e => e.Cached))}   ·   Zapis cache: {Tokens(g.Sum(e => e.CacheWrite))}", 12, InsightsUi.Muted));
-            detail.Children.Add(InsightsUi.Text(string.Join("  ·  ", g.GroupBy(e => e.Model).OrderByDescending(m => m.Sum(e => e.Total)).Select(m => m.Key + ": " + Tokens(m.Sum(e => e.Total)))), 11, InsightsUi.Muted));
-            box.Children.Add(Details(name + ":" + g.Key, $"{Count(g.Select(e => e.Session).Distinct().Count(), "sesja", "sesje", "sesji")} · {Count(g.Count(), "odpowiedź", "odpowiedzi", "odpowiedzi")} · szczegóły", detail));
+            var actionRow = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+            var action = ActionButton("Sesje i modele  →", () => OpenProject(g.Key));
+            DockPanel.SetDock(action, Dock.Right); actionRow.Children.Add(action);
+            actionRow.Children.Add(InsightsUi.Text($"{Count(g.Select(e => e.Session).Distinct().Count(), "sesja", "sesje", "sesji")} · {Count(g.Count(), "odpowiedź", "odpowiedzi", "odpowiedzi")}", 13, InsightsUi.Muted));
+            box.Children.Add(actionRow);
+            box.Children.Add(Details(name + ":" + g.Key, "Skład tokenów", TokenComposition(TokenTotals.From(g))));
             projectBody.Children.Add(InsightsUi.Card(box));
         }
         if (total == 0) projectBody.Children.Add(InsightsUi.Card(InsightsUi.Text("Brak danych tokenów w tym okresie.", 14, InsightsUi.Muted)));
         if (groups.Count > 20) projectBody.Children.Add(InsightsUi.Text($"20 z {groups.Count} projektów · udział liczony ze wszystkich", 11, InsightsUi.Muted));
         if (analysis.Skipped > 0) projectBody.Children.Add(InsightsUi.Text($"Pominięte pliki lub rekordy: {analysis.Skipped}", 11, InsightsUi.Muted));
+    }
+
+    static Button ActionButton(object label, Action action)
+    {
+        var button = new Button { Content = label, FontSize = 13, Foreground = new SolidColorBrush(InsightsUi.Blue),
+            HorizontalContentAlignment = HorizontalAlignment.Left };
+        button.Click += (_, _) => action(); return button;
+    }
+    void OpenProject(string path)
+    {
+        selectedProject = path; selectedProjectProvider = SelectedProvider; projectModels = false; projectPage = 0;
+        RefreshProjects();
+        ScrollProjectsToTop();
+    }
+    void ScrollProjectsToTop()
+    {
+        for (DependencyObject? p = projectBody; p is not null; p = VisualTreeHelper.GetParent(p))
+            if (p is ScrollViewer scroll) { scroll.ScrollToTop(); break; }
+    }
+    async void LoadSessionTitles(List<SessionUsage> page)
+    {
+        if (!allowSessionTitles || SelectedProvider != "Codex") return;
+        var ids = page.Select(s => s.Id).Where(id => !string.IsNullOrWhiteSpace(id) && requestedTitles.Add(id)).ToArray();
+        if (ids.Length == 0) return;
+        var project = selectedProject;
+        try
+        {
+            var titles = await Task.Run(() => LocalSqlite.Read(System.IO.Path.Combine(LocalPaths.Codex, "state_5.sqlite"),
+                "SELECT id,title FROM threads WHERE id IN (" + string.Join(",", ids.Select(id => "'" + id.Replace("'", "''") + "'")) + ")", 2));
+            if (closed) return;
+            foreach (var row in titles) if (!string.IsNullOrWhiteSpace(row[1])) sessionTitles[row[0]] = WidgetTips.Line(row[1], 80);
+            if (titles.Count > 0 && SelectedProvider == "Codex" && selectedProject == project && !projectModels && tabs.SelectedIndex == 2) RefreshProjects();
+        }
+        catch { /* Historical titles are optional; identifiers and dates remain usable. */ }
+    }
+    static FrameworkElement TokenComposition(TokenTotals tokens)
+    {
+        var cells = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2, Margin = new Thickness(-4, 8, -4, 0) };
+        foreach (var (label, value) in new[] { ("Wejście bez cache", tokens.Input), ("Odczyt cache", tokens.Cached), ("Wyjście", tokens.Output), ("Zapis cache", tokens.CacheWrite) })
+        {
+            var cell = new StackPanel(); cell.Children.Add(InsightsUi.Text(label, 13, InsightsUi.Muted));
+            var number = InsightsUi.Text(Tokens(value), 21, label == "Odczyt cache" ? InsightsUi.Brush("#89D9C1") : InsightsUi.Ink);
+            number.FontWeight = FontWeights.SemiBold; cell.Children.Add(number);
+            cells.Children.Add(new Border { Child = cell, Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(4),
+                Background = InsightsUi.Brush("#16202C"), CornerRadius = new CornerRadius(6) });
+        }
+        return cells;
+    }
+    Expander LazyDetails(string key, string label, Func<UIElement> build)
+    {
+        var content = new StackPanel(); var view = Details(key, label, content);
+        void Fill() { if (content.Children.Count == 0) content.Children.Add(build()); }
+        view.Expanded += (_, _) => Fill(); if (view.IsExpanded) Fill(); return view;
+    }
+    void RenderProject()
+    {
+        var data = ProjectBreakdown.Build(analysis.Entries, SelectedProvider, selectedProject!, Since);
+        var top = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+        var back = ActionButton("← Projekty", () => { selectedProject = null; RefreshProjects(); ScrollProjectsToTop(); });
+        back.Margin = new Thickness(0, 0, 12, 0); top.Children.Add(back);
+        var heading = InsightsUi.Text(System.IO.Path.GetFileName(selectedProject!.TrimEnd('\\', '/')), 20);
+        heading.FontWeight = FontWeights.SemiBold; heading.TextWrapping = TextWrapping.NoWrap; heading.TextTrimming = TextTrimming.CharacterEllipsis;
+        WidgetTips.Set(heading, "Folder projektu", selectedProject); top.Children.Add(heading); projectBody.Children.Add(top);
+        projectBody.Children.Add(InsightsUi.Text($"{Tokens(data.Tokens.Total)} tokenów · {Count(data.Tokens.Responses, "odpowiedź", "odpowiedzi", "odpowiedzi")}", 18));
+        if (analysis.Loading) projectBody.Children.Add(InsightsUi.Text("Indeksowanie… wyniki częściowe", 13, InsightsUi.Muted));
+        if (data.Tokens.Total > 0)
+            projectBody.Children.Add(InsightsUi.Text($"{100.0 * data.Tokens.Cached / data.Tokens.Total:0.#}% tokenów to odczyt cache · udział nie oznacza kosztu", 13, InsightsUi.Muted));
+        var choices = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 8) };
+        var sessionChoice = ActionButton($"Sesje ({data.Sessions.Count})", () => { projectModels = false; projectPage = 0; RefreshProjects(); });
+        var modelChoice = ActionButton($"Modele ({data.Models.Count})", () => { projectModels = true; projectPage = 0; RefreshProjects(); });
+        sessionChoice.Background = projectModels ? Brushes.Transparent : InsightsUi.Brush("#2C405B");
+        modelChoice.Background = projectModels ? InsightsUi.Brush("#2C405B") : Brushes.Transparent;
+        AutomationProperties.SetName(sessionChoice, "Ranking sesji projektu"); AutomationProperties.SetName(modelChoice, "Ranking modeli projektu");
+        choices.Children.Add(sessionChoice); choices.Children.Add(modelChoice); projectBody.Children.Add(choices);
+        projectBody.Children.Add(InsightsUi.Text("Największe zużycie · udział w tokenach projektu", 13, InsightsUi.Muted));
+        if (data.Sessions.Count == 0) { projectBody.Children.Add(InsightsUi.Text("Brak odpowiedzi w wybranym okresie.", 14)); return; }
+        if (projectModels)
+        {
+            foreach (var model in data.Models)
+            {
+                var row = new StackPanel(); row.Children.Add(RankingHeading(model.Name, model.Tokens.Total, data.Tokens.Total));
+                row.Children.Add(InsightsUi.Text($"{Count(model.Sessions, "sesja", "sesje", "sesji")} · {Count(model.Tokens.Responses, "odpowiedź", "odpowiedzi", "odpowiedzi")}", 13, InsightsUi.Muted));
+                row.Children.Add(LazyDetails($"{SelectedProvider}:{selectedProject}:model:{model.Name}", "Skład tokenów", () => TokenComposition(model.Tokens)));
+                projectBody.Children.Add(InsightsUi.Card(row));
+            }
+            return;
+        }
+        const int pageSize = 15;
+        projectPage = Math.Clamp(projectPage, 0, (data.Sessions.Count - 1) / pageSize);
+        if (data.Sessions.Count > pageSize) projectBody.Children.Add(ProjectPager(data.Sessions.Count, pageSize));
+        var visibleSessions = data.Sessions.Skip(projectPage * pageSize).Take(pageSize).ToList();
+        foreach (var session in visibleSessions)
+        {
+            var row = new StackPanel();
+            var live = sessions.Sessions.FirstOrDefault(s => s.Provider == SelectedProvider && s.Id == session.Id);
+            string id = session.Id.Length > 16 ? session.Id[..8] + "…" + session.Id[^6..] : session.Id;
+            string title = live is not null && !string.IsNullOrWhiteSpace(live.Name) ? WidgetTips.Line(live.Name, 70)
+                : SelectedProvider == "Codex" && sessionTitles.TryGetValue(session.Id, out var savedTitle) ? savedTitle : "Sesja " + id;
+            row.Children.Add(RankingHeading(title, session.Tokens.Total, data.Tokens.Total));
+            var meta = new DockPanel();
+            var copy = new Button { Content = "Kopiuj ID", FontSize = 13, Foreground = new SolidColorBrush(InsightsUi.Blue) };
+            copy.Click += (_, _) => { try { Clipboard.SetText(session.Id); copy.Content = "Skopiowano"; } catch (System.Runtime.InteropServices.ExternalException) { copy.Content = "Spróbuj ponownie"; } };
+            DockPanel.SetDock(copy, Dock.Right); meta.Children.Add(copy);
+            AutomationProperties.SetName(copy, "Kopiuj ID sesji " + session.Id);
+            string first = session.First.LocalDateTime.ToString("dd.MM HH:mm"), last = session.Last.LocalDateTime.ToString("dd.MM HH:mm");
+            meta.Children.Add(InsightsUi.Text((first == last ? first : first + " – " + last) + " · " + Count(session.Tokens.Responses, "odpowiedź", "odpowiedzi", "odpowiedzi"), 13, InsightsUi.Muted));
+            row.Children.Add(meta);
+            row.Children.Add(LazyDetails($"{SelectedProvider}:{selectedProject}:session:{session.Id}", $"Modele ({session.Models.Count}) i skład tokenów", () =>
+            {
+                var content = new StackPanel(); content.Children.Add(TokenComposition(session.Tokens));
+                content.Children.Add(InsightsUi.Text("Modele w tej sesji", 14));
+                foreach (var model in session.Models) content.Children.Add(RankingHeading(model.Name, model.Tokens.Total, session.Tokens.Total));
+                return content;
+            }));
+            projectBody.Children.Add(InsightsUi.Card(row));
+        }
+        if (data.Sessions.Count > pageSize) projectBody.Children.Add(ProjectPager(data.Sessions.Count, pageSize));
+        LoadSessionTitles(visibleSessions);
+    }
+    FrameworkElement ProjectPager(int count, int pageSize)
+    {
+        var pager = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 10) };
+        var previous = ActionButton("←", () => { projectPage--; RefreshProjects(); ScrollProjectsToTop(); }); previous.IsEnabled = projectPage > 0;
+        var next = ActionButton("→", () => { projectPage++; RefreshProjects(); ScrollProjectsToTop(); }); next.IsEnabled = (projectPage + 1) * pageSize < count;
+        AutomationProperties.SetName(previous, "Poprzednia strona sesji"); AutomationProperties.SetName(next, "Następna strona sesji");
+        pager.Children.Add(previous);
+        pager.Children.Add(InsightsUi.Text($" {projectPage * pageSize + 1}–{Math.Min((projectPage + 1) * pageSize, count)} z {count} ", 13));
+        pager.Children.Add(next); return pager;
+    }
+    static FrameworkElement RankingHeading(string title, long total, long denominator)
+    {
+        var row = ValueRow(title, $"{Tokens(total)}  ·  {(denominator > 0 ? 100.0 * total / denominator : 0):0.#}%");
+        foreach (var text in row.Children.OfType<TextBlock>()) text.FontSize = 15;
+        return row;
     }
 
     void RefreshDiagnostics()

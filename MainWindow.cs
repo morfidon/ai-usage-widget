@@ -256,7 +256,7 @@ public sealed class MainWindow : Window
     void OpenInsights()
     {
         if (insights is not null) { insights.Show(); insights.Activate(); return; }
-        insights = new InsightsWindow(history) { Owner = this, Topmost = Topmost };
+        insights = new InsightsWindow(history, !preview) { Owner = this, Topmost = Topmost };
         insights.UpdateDetails(analysis, sessions);
         insights.UpdateQuotas(codexState, claudeState);
         insights.Closed += (_, _) => insights = null;

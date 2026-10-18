@@ -18,6 +18,24 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
+            var at = DateTimeOffset.UtcNow;
+            var projectRows = new[] {
+                new TokenEntry("Codex", "project-a", "session-a", "model-a", at, 10, 90, 0, 0, false),
+                new TokenEntry("Codex", "project-a", "session-a", "model-b", at, 20, 0, 0, 10, false),
+                new TokenEntry("Codex", "project-a", "session-b", "model-a", at, 50, 150, 0, 20, false),
+                new TokenEntry("Claude", "project-a", "session-a", "foreign-provider", at, 9999, 0, 0, 0, false),
+                new TokenEntry("Codex", "project-b", "session-a", "foreign-project", at, 9999, 0, 0, 0, false),
+                new TokenEntry("Codex", "project-a", "old", "old-model", at.AddDays(-2), 9999, 0, 0, 0, false) };
+            var project = ProjectBreakdown.Build(projectRows, "Codex", "project-a", at.AddDays(-1));
+            Check(project.Tokens.Total == 350 && project.Tokens.Cached == 240 && project.Tokens.Responses == 3,
+                "Project breakdown scopes provider, exact project and time without double counting cache");
+            Check(project.Sessions.Count == 2 && project.Sessions[0].Id == "session-b" && project.Sessions[1].Models.Count == 2,
+                "Project session ranking preserves mixed-model sessions and sorts by tokens");
+            Check(project.Models[0].Name == "model-a" && project.Models[0].Tokens.Total == 320 && project.Models[0].Sessions == 2
+                && project.Sessions.Sum(s => s.Tokens.Total) == project.Models.Sum(m => m.Tokens.Total),
+                "Session and model rankings reconcile to the same project total");
+            Check(ProjectBreakdown.Build(projectRows, "Codex", "missing", at.AddDays(-1)).Tokens.Total == 0,
+                "Empty project breakdown has no invented usage");
             string bounded = WidgetTips.Body(string.Join("\n", Enumerable.Repeat(new string('x', 10000), 30)));
             Check(bounded.Length <= 420 && bounded.EndsWith("…"), "Provider tooltip text has a hard display bound");
             Check(WidgetTips.Line("Short title\nLarge prompt body") == "Short title", "Details heading uses only first line");
