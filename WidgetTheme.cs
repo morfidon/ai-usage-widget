@@ -9,16 +9,44 @@ public static class WidgetTheme
     {
         var resources = (ResourceDictionary)XamlReader.Parse("""
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style TargetType="ToolTip"><Setter Property="Background" Value="#263343"/><Setter Property="Foreground" Value="#EDF2F7"/><Setter Property="BorderBrush" Value="#52647B"/><Setter Property="Padding" Value="12,9"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style TargetType="Expander">
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander">
+      <StackPanel>
+        <ToggleButton x:Name="HeaderToggle" Foreground="{TemplateBinding Foreground}" HorizontalContentAlignment="Left" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+          <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="HitArea" Background="Transparent" CornerRadius="4" Padding="0,5">
+              <DockPanel><TextBlock x:Name="Arrow" Text="›" FontSize="17" Foreground="{TemplateBinding Foreground}" Margin="0,0,8,0" VerticalAlignment="Center"/><ContentPresenter VerticalAlignment="Center"/></DockPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True"><Setter TargetName="Arrow" Property="Text" Value="⌄"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HitArea" Property="Background" Value="#263343"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="HitArea" Property="Background" Value="#30455F"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate></ToggleButton.Template>
+          <ContentPresenter ContentSource="Header"/>
+        </ToggleButton>
+        <ContentPresenter x:Name="Body" Visibility="Collapsed"/>
+      </StackPanel>
+      <ControlTemplate.Triggers><Trigger Property="IsExpanded" Value="True"><Setter TargetName="Body" Property="Visibility" Value="Visible"/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="ProgressBar">
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
+      <Border Background="{TemplateBinding Background}" CornerRadius="3"><Grid x:Name="PART_Track"><Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="3"/></Grid></Border>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="TabItem">
-    <Setter Property="Background" Value="#252E3A"/><Setter Property="Foreground" Value="#ABB9CC"/>
+    <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#ACB8C8"/>
     <Setter Property="Padding" Value="14,9"/><Setter Property="Margin" Value="0,0,6,0"/>
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem">
       <Border Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
         <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Border>
     </ControlTemplate></Setter.Value></Setter>
-    <Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#3A4D68"/><Setter Property="Foreground" Value="#F3F6FC"/></Trigger>
-      <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#354256"/></Trigger>
+    <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#263343"/></Trigger>
+      <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#2C405B"/><Setter Property="Foreground" Value="#EDF2F7"/></Trigger>
+      <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="#FFFFFF"/></Trigger>
     </Style.Triggers>
   </Style>
   <Style TargetType="ComboBoxItem">

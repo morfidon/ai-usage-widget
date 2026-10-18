@@ -23,12 +23,12 @@ public sealed class MainWindow : Window
 {
     static readonly Color Mint = Color.FromRgb(105, 220, 196);
     static readonly Color CodexAccent = Color.FromRgb(124, 184, 255);
-    static readonly Color ClaudeAccent = Color.FromRgb(194, 171, 255);
+    static readonly Color ClaudeAccent = Color.FromRgb(232, 175, 143);
     static readonly Color DevinAccent = Color.FromRgb(105, 220, 196);
     static readonly Color AirAccent = Color.FromRgb(244, 167, 205);
     static readonly Color AntigravityAccent = Color.FromRgb(146, 192, 255);
     static readonly Brush ForegroundBrush = Brush("#F0F2F6");
-    static readonly Brush Muted = Brush("#A4AEBD");
+    static readonly Brush Muted = Brush("#ACB8C8");
     readonly Settings settings;
     readonly CodexProvider codex;
     readonly ClaudeProvider claude;
@@ -88,7 +88,7 @@ public sealed class MainWindow : Window
         ShowInTaskbar = false; Topmost = settings.Topmost; FontFamily = new FontFamily("Segoe UI");
         var outer = new Border { Margin = new Thickness(9), Padding = new Thickness(16), CornerRadius = new CornerRadius(18),
             BorderThickness = new Thickness(1), BorderBrush = Brush("#353B45"),
-            Background = new LinearGradientBrush(Color.FromRgb(27, 30, 36), Color.FromRgb(19, 22, 27), 90),
+            Background = new LinearGradientBrush(Color.FromRgb(22, 29, 39), Color.FromRgb(18, 24, 33), 90),
             Effect = new DropShadowEffect { BlurRadius = 15, ShadowDepth = 3, Opacity = 0.35, Color = Colors.Black } };
         Content = outer;
         var layout = new StackPanel(); outer.Child = layout;
@@ -341,10 +341,24 @@ public sealed class MainWindow : Window
         catch (OperationCanceledException) { }
         finally { healthBusy = false; lastHealth = DateTimeOffset.Now; }
     }
+    string HealthDetail(string name)
+    {
+        if (name is not ("Codex" or "Claude")) return "";
+        var health = name == "Codex" ? codexHealth : claudeHealth;
+        return "\nUsługa: " + (!health.Available ? "brak odczytu" : health.Incident ? "incydent" : "działa") + "\n" + health.Detail;
+    }
+    void LinkHealth(FrameworkElement target, string name)
+    {
+        if (name is not ("Codex" or "Claude")) return;
+        target.Cursor = Cursors.Hand;
+        SetTip(target, "Status usługi " + name, HealthDetail(name).Trim() + "\nKliknij, aby otworzyć stronę statusu.");
+        target.MouseLeftButtonUp += (_, e) => { OpenUrl((name == "Codex" ? codexHealth : claudeHealth).Url); e.Handled = true; };
+    }
     void AddHealth(StackPanel panel, string name)
     {
         if (name is not ("Codex" or "Claude")) return;
         var health = name == "Codex" ? codexHealth : claudeHealth;
+        if (health.Available && !health.Incident) return;
         var label = Text(!health.Available ? "○  Status usługi niedostępny" : health.Incident ? "●  " + (name == "Codex" ? "OpenAI" : "Claude") + " · incydent" : "●  Usługa działa", 9,
             !health.Available ? Muted : health.Incident ? Brush("#EAC06C") : Brush("#79C7AE"));
         label.Margin = new Thickness(0, 7, 0, 0); label.Cursor = Cursors.Hand;
@@ -365,11 +379,12 @@ public sealed class MainWindow : Window
             active.Count(s => s.State == "waiting") is int w && w > 0 ? $"? Czeka: {w}" : "",
             active.Count(s => s.State == "idle") is int i && i > 0 ? $"○ Bezczynne: {i}" : ""
         }.Where(s => s.Length > 0));
-        block.Children.Add(Text(summary, 10, active.Any(s => s.State == "waiting") ? Brush("#EAC06C") : Muted));
+        if (active.Count != 1) block.Children.Add(Text(summary, 10, active.Any(s => s.State == "waiting") ? Brush("#EAC06C") : Muted));
         // Active projects remain visible in compact mode too, without expanding the quota rows.
         foreach (var s in active.OrderByDescending(s => s.State == "waiting").ThenByDescending(s => s.State == "working").Take(settings.Compact ? 2 : 4))
         {
-            var line = Text((s.State == "working" ? "▶ " : s.State == "waiting" ? "? " : "○ ") + Path.GetFileName(s.Directory.TrimEnd('\\', '/')), 10, Muted);
+            var line = Text((s.State == "working" ? "▶ " : s.State == "waiting" ? "? " : "○ ") + Path.GetFileName(s.Directory.TrimEnd('\\', '/'))
+                + (active.Count == 1 ? " · " + s.StateLabel.ToLowerInvariant() : ""), 10, s.State == "waiting" ? Brush("#EAC06C") : Muted);
             line.TextTrimming = TextTrimming.CharacterEllipsis; block.Children.Add(line);
         }
         if (active.Count > (settings.Compact ? 2 : 4)) block.Children.Add(Text("+ " + (active.Count - (settings.Compact ? 2 : 4)) + " więcej · szczegóły", 9, Muted));
@@ -451,7 +466,7 @@ public sealed class MainWindow : Window
     {
         if (settings.Compact) return CompactCard(state, color);
         var panel = new StackPanel();
-        var card = new Border { CornerRadius = new CornerRadius(11), Background = Brush("#242932"),
+        var card = new Border { CornerRadius = new CornerRadius(11), Background = Brush("#1D2632"),
             Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 7), Child = panel };
         var header = new Grid(); header.ColumnDefinitions.Add(new ColumnDefinition()); header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var title = new StackPanel { Orientation = Orientation.Horizontal };
@@ -459,10 +474,11 @@ public sealed class MainWindow : Window
         AddMascot(title, state);
         if (!string.IsNullOrEmpty(state.Plan)) title.Children.Add(Text("  " + state.Plan.ToUpperInvariant(), 8, Muted));
         header.Children.Add(title);
-        var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = state.Status };
+        var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = state.Status + HealthDetail(state.Name) };
         bool stale = Stale(state);
         var dot = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Fill = stale ? Brush("#E5B66A") : new SolidColorBrush(color), Margin = new Thickness(0, 0, 5, 0) };
-        status.Children.Add(dot); status.Children.Add(Text(stale ? "Oczekiwanie" : "Połączono", 9, Muted));
+        status.Children.Add(dot); if (stale) status.Children.Add(Text("Oczekiwanie", 9, Muted));
+        LinkHealth(status, state.Name);
         Grid.SetColumn(status, 1); header.Children.Add(status); panel.Children.Add(header);
         AddSessions(panel, state.Name);
         AddHealth(panel, state.Name);
@@ -496,22 +512,7 @@ public sealed class MainWindow : Window
             remaining.Children.Add(remainingLabel);
             Grid.SetColumn(remaining, 1); info.Children.Add(remaining); row.Children.Add(info);
 
-            var consumption = new Grid { Margin = new Thickness(0, settings.Compact ? 3 : 5, 0, 0) };
-            consumption.ColumnDefinitions.Add(new ColumnDefinition());
-            consumption.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            consumption.Children.Add(Text(window.Expired ? "Czekam na aktualny limit" : $"Wykorzystano {window.Used:0.#}% limitu", settings.Compact ? 10 : 11, Muted));
-            var direction = Text("zużycie →", 10, Muted); Grid.SetColumn(direction, 1);
-            consumption.Children.Add(direction); row.Children.Add(consumption);
-            var track = new Canvas { Height = settings.Compact ? 15 : 19, Margin = new Thickness(0, 2, 0, 0), Opacity = stale || window.Expired ? 0.5 : 1 };
-            track.SizeChanged += (_, _) => DrawTrack(track, window, GroupColor(window, color));
-            row.Children.Add(track);
-            if (!settings.Compact)
-            {
-                var scale = new Grid(); scale.ColumnDefinitions.Add(new ColumnDefinition()); scale.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                scale.Children.Add(Text("0% · brak zużycia", 9, Muted));
-                var full = Text("100% · limit", 9, Muted); Grid.SetColumn(full, 1); scale.Children.Add(full); row.Children.Add(scale);
-
-            }
+            row.Children.Add(RemainingBar(window, state, GroupColor(window, color)));
             row.Children.Add(ResetBadge(window, GroupColor(window, color)));
             SetTip(row, $"{state.Name} · {window.Label}", QuotaDetail(window, state));
             panel.Children.Add(row);
@@ -527,7 +528,7 @@ public sealed class MainWindow : Window
     {
         bool stale = Stale(state);
         var panel = new StackPanel();
-        var card = new Border { Background = Brush("#242932"), CornerRadius = new CornerRadius(10),
+        var card = new Border { Background = Brush("#1D2632"), CornerRadius = new CornerRadius(10),
             Padding = new Thickness(12, 10, 12, 10), Margin = new Thickness(0, 0, 0, 7), Child = panel };
         var header = new Grid { Background = Brushes.Transparent };
         header.ColumnDefinitions.Add(new ColumnDefinition());
@@ -535,17 +536,18 @@ public sealed class MainWindow : Window
         var brand = new StackPanel { Orientation = Orientation.Horizontal };
         var providerName = Text(state.Name, 12, new SolidColorBrush(color), FontWeights.SemiBold);
         SetTip(providerName, state.Name + (state.Plan.Length > 0 ? " · " + state.Plan.ToUpperInvariant() : ""),
-            state.Status + "\nOdczyt: " + UpdatedText(state));
+            state.Status + "\nOdczyt: " + UpdatedText(state) + HealthDetail(state.Name));
         brand.Children.Add(providerName);
         AddMascot(brand, state);
         var statusTarget = new Border { Width = 21, Background = Brushes.Transparent };
         statusTarget.Child = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5,
             Fill = stale ? Brush("#EAC06C") : new SolidColorBrush(Mint), VerticalAlignment = VerticalAlignment.Center };
+        LinkHealth(statusTarget, state.Name);
         brand.Children.Add(statusTarget); header.Children.Add(brand);
         var remainingHeading = Text("Pozostało", 10, Muted); remainingHeading.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(remainingHeading, 1); header.Children.Add(remainingHeading);
         SetTip(header, state.Name + (state.Plan.Length > 0 ? " · " + state.Plan.ToUpperInvariant() : ""),
-            state.Status + "\nOdczyt: " + UpdatedText(state));
+            state.Status + "\nOdczyt: " + UpdatedText(state) + HealthDetail(state.Name));
         panel.Children.Add(header);
         AddSessions(panel, state.Name);
         AddHealth(panel, state.Name);
@@ -663,21 +665,6 @@ public sealed class MainWindow : Window
             line.Children.Add(words); badge.Child = line;
         }
         return badge;
-    }
-    static void DrawTrack(Canvas canvas, UsageWindow w, Color color)
-    {
-        canvas.Children.Clear();
-        double width = Math.Max(0, canvas.ActualWidth), height = 8, top = (canvas.Height - height) / 2;
-        var rail = new System.Windows.Shapes.Rectangle { Width = width, Height = height, RadiusX = 4, RadiusY = 4, Fill = Brush("#465166") };
-        Canvas.SetTop(rail, top); canvas.Children.Add(rail);
-        // A conventional progress bar: colored area is consumed quota, growing left to right.
-        // The large number above explicitly names the complementary remaining quota.
-        if (!w.Expired && w.Used > 0)
-        {
-            var fill = new System.Windows.Shapes.Rectangle { Width = width * w.Used / 100, Height = height, RadiusX = 4, RadiusY = 4,
-                Fill = new SolidColorBrush(w.Remaining <= 10 ? Color.FromRgb(245, 112, 116) : color) };
-            Canvas.SetTop(fill, top); canvas.Children.Add(fill);
-        }
     }
     static void Fish(Canvas canvas, double x, double y, Color color, double scale)
     {
