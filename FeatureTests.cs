@@ -71,6 +71,31 @@ public static class FeatureTests
             Check(stats.Entries.Single(e => e.Provider == "Claude").Total == 138, "Claude streaming updates use final token counts");
             Check(stats.Entries.Single(e => e.Provider == "Codex").Total == 90, "Codex cached input is not counted twice");
             Check(analyzer.Scan(CancellationToken.None).Entries.Count == 2, "Repeated analytics refresh is idempotent");
+            string partialResponse = ClaudeLine(15).Replace("response", "appended").Replace("\"tool\"", "\"new-tool\"");
+            string appendFile = Path.Combine(cp, "one.jsonl");
+            File.AppendAllText(appendFile, partialResponse);
+            Check(analyzer.Scan(CancellationToken.None).Entries.Count == 2, "Unterminated appended response stays out of statistics");
+            File.AppendAllText(appendFile, "\n");
+            Check(analyzer.Scan(CancellationToken.None).Entries.Count == 3, "Completed append is indexed after unchanged scans");
+            File.WriteAllText(appendFile, ClaudeLine(8) + "\n");
+            Check(analyzer.Scan(CancellationToken.None).Entries.Count == 2, "Truncated transcript invalidates its old indexed responses");
+            File.Delete(appendFile);
+            Check(analyzer.Scan(CancellationToken.None).Entries.Count == 2, "Deleting a duplicate transcript preserves the surviving response");
+            File.Delete(Path.Combine(cp, "copy.jsonl"));
+            Check(analyzer.Scan(CancellationToken.None).Entries.Count == 1, "Deleted transcripts disappear from cached statistics");
+            string expiryRoot = Path.Combine(dir, "expiry"); Directory.CreateDirectory(expiryRoot);
+            var expiryNow = DateTimeOffset.UtcNow;
+            string boundaryResponse = ClaudeLine(8).Replace(JsonSerializer.Serialize(stamp), JsonSerializer.Serialize(expiryNow.AddDays(-7).ToString("O")));
+            File.WriteAllText(Path.Combine(expiryRoot, "one.jsonl"), boundaryResponse + "\n");
+            using var expiryAnalyzer = new TranscriptAnalytics(new Settings(), expiryRoot, ap, ap);
+            Check(expiryAnalyzer.Scan(CancellationToken.None, expiryNow).Entries.Count == 1
+                && expiryAnalyzer.Scan(CancellationToken.None, expiryNow.AddTicks(1)).Entries.Count == 0,
+                "Seven-day expiry removes unchanged records at the exact boundary");
+            string oversizedFile = Path.Combine(dir, "oversized.jsonl");
+            File.WriteAllText(oversizedFile, new string('x', 4_000_001) + "\n{\"value\":1}\n");
+            using var oversizedCursor = new JsonlCursor(); int validLines = 0;
+            oversizedCursor.Read(oversizedFile, 10_000_000, _ => validLines++, CancellationToken.None);
+            Check(validLines == 1 && oversizedCursor.Skipped == 1, "Oversized records do not consume the following valid record");
             var trayClaude = s with { Name = "Claude", Updated = DateTimeOffset.Now, Windows = new() { new("five_hour", "5h", 6, DateTimeOffset.Now.AddHours(2).ToUnixTimeSeconds(), 300), new("seven_day", "7d", 91, DateTimeOffset.Now.AddDays(2).ToUnixTimeSeconds(), 10080) } };
             string tooltip = TrayFormatter.Format(s with { Updated = DateTimeOffset.Now }, trayClaude);
             Check(tooltip.Contains("5h 94%") && tooltip.Contains("7d 9%") && tooltip.Length <= 63, "Tray tooltip retains both Claude windows when weekly quota is constrained");

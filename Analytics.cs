@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -31,34 +32,48 @@ public sealed class JsonlCursor : IDisposable
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         if (stream.Length < Offset) { Offset = 0; pending.SetLength(0); oversized = false; }
         stream.Position = Offset;
-        byte[] buffer = new byte[65536]; long read = 0; int n;
-        while (read < budget && (n = stream.Read(buffer, 0, (int)Math.Min(buffer.Length, budget - read))) > 0)
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(65536);
+        long read = 0; int n;
+        try
         {
-            token.ThrowIfCancellationRequested(); read += n; Offset += n;
-            int pos = 0;
-            while (pos < n)
+            while (read < budget && (n = stream.Read(buffer, 0, (int)Math.Min(65536, budget - read))) > 0)
             {
-                int next = Array.IndexOf(buffer, (byte)'\n', pos, n - pos);
-                int end = next < 0 ? n : next;
-                if (!oversized && pending.Length + end - pos <= 4_000_000) pending.Write(buffer, pos, end - pos);
-                else { oversized = true; pending.SetLength(0); }
-                if (next < 0) break;
-                if (!oversized && pending.Length > 0)
+                token.ThrowIfCancellationRequested(); read += n; Offset += n;
+                int pos = 0;
+                while (pos < n)
                 {
-                    try
+                    int next = Array.IndexOf(buffer, (byte)'\n', pos, n - pos);
+                    int end = next < 0 ? n : next;
+                    if (next >= 0 && pending.Length == 0 && !oversized)
                     {
-                        var line = pending.GetBuffer().AsMemory(0, (int)pending.Length);
-                        if (include is null || include(line)) { using var doc = JsonDocument.Parse(line); consume(doc.RootElement); }
+                        // Most records fit in one block. Parse them in place instead of copying
+                        // every conversation line into a separate per-file buffer.
+                        Consume(buffer.AsMemory(pos, end - pos)); pos = next + 1; continue;
                     }
-                    catch (JsonException) { Skipped++; }
+                    if (!oversized && pending.Length + end - pos <= 4_000_000) pending.Write(buffer, pos, end - pos);
+                    else { oversized = true; pending.SetLength(0); }
+                    if (next < 0) break;
+                    if (!oversized && pending.Length > 0) Consume(pending.GetBuffer().AsMemory(0, (int)pending.Length));
+                    else if (oversized) Skipped++;
+                    pending.SetLength(0);
+                    if (pending.Capacity > 524288) pending.Capacity = 65536;
+                    oversized = false; pos = next + 1;
                 }
-                else if (oversized) Skipped++;
-                pending.SetLength(0);
-                if (pending.Capacity > 524288) pending.Capacity = 65536;
-                oversized = false; pos = next + 1;
             }
+            return Offset < stream.Length;
         }
-        return Offset < stream.Length;
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+            // Completed files need only their offset, not a retained large scratch buffer.
+            if (pending.Length == 0) pending.Capacity = 0;
+        }
+        void Consume(ReadOnlyMemory<byte> line)
+        {
+            if (line.Length == 0) return;
+            try { if (include is null || include(line)) { using var doc = JsonDocument.Parse(line); consume(doc.RootElement); } }
+            catch (JsonException) { Skipped++; }
+        }
     }
     public void Dispose() => pending.Dispose();
 }
@@ -78,6 +93,8 @@ public sealed class TranscriptAnalytics : IDisposable
     readonly Dictionary<string, FileData> files = new(StringComparer.OrdinalIgnoreCase);
     readonly Settings settings;
     readonly (string Path, string Provider)[] sources;
+    AnalyticsSnapshot? previous;
+    DateTimeOffset nextExpiration = DateTimeOffset.MaxValue;
     public TranscriptAnalytics(Settings settings, string? claudeProjects = null, string? codexSessions = null, string? codexArchives = null)
     {
         this.settings = settings;
@@ -85,16 +102,17 @@ public sealed class TranscriptAnalytics : IDisposable
             (codexSessions ?? Path.Combine(LocalPaths.Codex, "sessions"), "Codex"),
             (codexArchives ?? Path.Combine(LocalPaths.Codex, "archived_sessions"), "Codex") };
     }
-    public AnalyticsSnapshot Scan(CancellationToken token)
+    public AnalyticsSnapshot Scan(CancellationToken token, DateTimeOffset? nowOverride = null)
     {
-        var since = DateTimeOffset.UtcNow.AddDays(-7); long budget = 128_000_000; bool more = false; int skipped = 0;
-        var candidates = new List<(string Path, string Provider, DateTime Modified)>();
+        var now = nowOverride ?? DateTimeOffset.UtcNow; var since = now.AddDays(-7);
+        long budget = 128_000_000; bool more = false, changed = false; int skipped = 0;
+        var candidates = new List<(string Path, string Provider, DateTime Modified, long Length)>();
         foreach (var source in sources)
         {
             try
             {
-                if (Directory.Exists(source.Path)) candidates.AddRange(Directory.EnumerateFiles(source.Path, "*.jsonl", SearchOption.AllDirectories)
-                    .Select(p => (p, source.Provider, File.GetLastWriteTimeUtc(p))).Where(p => p.Item3 >= since.UtcDateTime));
+                if (Directory.Exists(source.Path)) candidates.AddRange(new DirectoryInfo(source.Path).EnumerateFiles("*.jsonl", SearchOption.AllDirectories)
+                    .Where(f => f.LastWriteTimeUtc >= since.UtcDateTime).Select(f => (f.FullName, source.Provider, f.LastWriteTimeUtc, f.Length)));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; }
         }
@@ -107,11 +125,13 @@ public sealed class TranscriptAnalytics : IDisposable
             {
                 data = new FileData { Session = Path.GetFileNameWithoutExtension(file.Path), Subagent = file.Path.Contains("subagent", StringComparison.OrdinalIgnoreCase) };
                 files[file.Path] = data;
+                changed = true;
             }
             try
             {
-                long length = new FileInfo(file.Path).Length;
-                if (length < data.Cursor.Offset) { data.Dispose(); files[file.Path] = data = new FileData(); }
+                long length = file.Length;
+                if (length < data.Cursor.Offset) { data.Dispose(); files[file.Path] = data = new FileData(); changed = true; }
+                if (length == data.Cursor.Offset) continue;
                 long before = data.Cursor.Offset;
                 more |= data.Cursor.Read(file.Path, Math.Min(budget, 32_000_000), e => Parse(data, file.Provider, e, since), token,
                     line => file.Provider == "Claude"
@@ -119,19 +139,39 @@ public sealed class TranscriptAnalytics : IDisposable
                         : line.Span.IndexOf("\"token_usage_record\""u8) >= 0 || line.Span.IndexOf("\"token_count\""u8) >= 0
                             || line.Span.IndexOf("\"turn_context\""u8) >= 0 || line.Span.IndexOf("\"session_meta\""u8) >= 0);
                 budget -= data.Cursor.Offset - before;
+                changed |= data.Cursor.Offset != before;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; }
         }
         var livePaths = candidates.Select(c => c.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var path in files.Keys.Where(p => !livePaths.Contains(p)).ToList()) { files[path].Dispose(); files.Remove(path); }
+        foreach (var path in files.Keys.Where(p => !livePaths.Contains(p)).ToList()) { files[path].Dispose(); files.Remove(path); changed = true; }
+        int skippedTotal = skipped + files.Values.Sum(f => f.Cursor.Skipped);
+        if (!changed && previous is not null && now < nextExpiration)
+            return previous = previous with { At = DateTimeOffset.Now, Loading = more, Skipped = skippedTotal };
+        var entries = new Dictionary<(string Provider, string Id), TokenEntry>();
+        var tools = new Dictionary<(string Provider, string Id), ToolEntry>();
+        nextExpiration = DateTimeOffset.MaxValue;
         foreach (var f in files.Values)
         {
             foreach (var k in f.Entries.Where(e => e.Value.At < since).Select(e => e.Key).ToList()) f.Entries.Remove(k);
             foreach (var k in f.Tools.Where(e => e.Value.At < since).Select(e => e.Key).ToList()) f.Tools.Remove(k);
+            foreach (var e in f.Entries)
+            {
+                var key = (e.Value.Provider, e.Key);
+                if (!entries.TryGetValue(key, out var current) || e.Value.Total > current.Total) entries[key] = e.Value;
+                ExpireAt(e.Value.At);
+            }
+            foreach (var e in f.Tools) { tools.TryAdd((e.Value.Provider, e.Key), e.Value); ExpireAt(e.Value.At); }
         }
-        return new(files.Values.SelectMany(f => f.Entries).GroupBy(e => (e.Value.Provider, e.Key)).Select(g => g.MaxBy(e => e.Value.Total).Value).ToList(),
-            files.Values.SelectMany(f => f.Tools).GroupBy(e => (e.Value.Provider, e.Key)).Select(g => g.First().Value).ToList(),
-            DateTimeOffset.Now, more, skipped + files.Values.Sum(f => f.Cursor.Skipped));
+        return previous = new(entries.Values.ToList(), tools.Values.ToList(), DateTimeOffset.Now, more, skippedTotal);
+        void ExpireAt(DateTimeOffset at)
+        {
+            if (at < DateTimeOffset.MaxValue.AddDays(-7))
+            {
+                var expiry = at.AddDays(7).AddTicks(1);
+                if (expiry < nextExpiration) nextExpiration = expiry;
+            }
+        }
     }
     static long N(JsonElement e, string key) => (long)Math.Clamp(UsageParser.Number(e, key) ?? 0, 0, 1e12);
     static void Parse(FileData f, string provider, JsonElement e, DateTimeOffset since)
