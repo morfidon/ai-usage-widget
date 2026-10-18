@@ -20,6 +20,24 @@ public sealed class MascotView : FrameworkElement
     readonly MascotState state;
     readonly bool animate;
     double phase;
+    static SolidColorBrush FrozenBrush(Color color) { var b = new SolidColorBrush(color); b.Freeze(); return b; }
+    static Pen FrozenPen(Brush brush, double width) { var p = new Pen(brush, width); p.Freeze(); return p; }
+    static readonly Brush Dim = FrozenBrush(Color.FromRgb(18, 23, 31));
+    static readonly Brush Shadow = FrozenBrush(Color.FromArgb(65, 0, 0, 0));
+    static readonly Brush RobotEyes = FrozenBrush(Color.FromRgb(200, 230, 255));
+    static readonly Brush Gold = FrozenBrush(Color.FromRgb(240, 197, 110));
+    static readonly Brush Light = FrozenBrush(Color.FromRgb(165, 220, 255));
+    static readonly Pen DarkEyePen = FrozenPen(Dim, 2), LightEyePen = FrozenPen(RobotEyes, 2), KeyboardPen = FrozenPen(Light, 1);
+    static readonly Typeface MarkFace = new("Segoe UI Semibold");
+    ScaleTransform? scale;
+    FormattedText? markText;
+    DrawingGroup? bodyDrawing, markDrawing;
+    double markDpi;
+    internal void ResetPhase()
+    {
+        phase = 0; InvalidateVisual();
+        if (IsLoaded) { timer.Stop(); UpdateTimer(); }
+    }
     public MascotView(string provider, MascotState state, bool animate)
     {
         this.provider = provider; this.state = state; this.animate = animate;
@@ -72,41 +90,62 @@ public sealed class MascotView : FrameworkElement
         base.OnRender(dc);
         bool moving = animate && SystemParameters.ClientAreaAnimation;
         double bob = moving ? Math.Sin(phase * (state == MascotState.Working ? 2 : 1)) * (state == MascotState.Working ? 2.5 : 0.7) : 0;
-        dc.PushTransform(new ScaleTransform(Width / 80, Height / 64));
-        var dim = new SolidColorBrush(Color.FromRgb(18, 23, 31));
-        dc.DrawEllipse(new SolidColorBrush(Color.FromArgb(65, 0, 0, 0)), null, new Point(40, 57), 26, 3);
+        if (scale is null || scale.ScaleX != Width / 80 || scale.ScaleY != Height / 64)
+        { scale = new ScaleTransform(Width / 80, Height / 64); scale.Freeze(); }
+        dc.PushTransform(scale);
+        dc.DrawEllipse(Shadow, null, new Point(40, 57), 26, 3);
         dc.PushTransform(new TranslateTransform(0, bob));
-        if (state == MascotState.Offline) dc.PushOpacity(0.4);
-        dc.DrawDrawing(Load(provider));
-        var eyes = provider == "Claude" ? dim : new SolidColorBrush(Color.FromRgb(200, 230, 255));
-        double eyeY = provider == "Claude" ? 29 : 31;
-        if (state == MascotState.Sleeping)
-        {
-            dc.DrawLine(new Pen(eyes, 2), new(29, eyeY), new(34, eyeY)); dc.DrawLine(new Pen(eyes, 2), new(46, eyeY), new(51, eyeY));
-        }
-        else if (state == MascotState.Exhausted)
-        {
-            foreach (int x in new[] { 31, 49 })
-            { dc.DrawLine(new Pen(eyes, 2), new(x - 3, eyeY - 3), new(x + 3, eyeY + 3)); dc.DrawLine(new Pen(eyes, 2), new(x + 3, eyeY - 3), new(x - 3, eyeY + 3)); }
-        }
-        else
-        {
-            dc.DrawRoundedRectangle(eyes, null, new Rect(29, eyeY - 3, 4, state == MascotState.Waiting ? 8 : 6), 1, 1);
-            dc.DrawRoundedRectangle(eyes, null, new Rect(47, eyeY - 3, 4, state == MascotState.Waiting ? 8 : 6), 1, 1);
-        }
-        if (state == MascotState.Offline) dc.Pop();
+        dc.DrawDrawing(BodyDrawing());
         dc.Pop();
-        var gold = new SolidColorBrush(Color.FromRgb(240, 197, 110));
         string mark = state switch { MascotState.Waiting => "?", MascotState.Sleeping => "z", MascotState.Finished => "✓", MascotState.Low => "!", MascotState.Exhausted => "×", MascotState.Offline => "…", _ => "" };
-        if (mark.Length > 0) dc.DrawText(new FormattedText(mark, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            new Typeface("Segoe UI Semibold"), state == MascotState.Waiting ? 19 : 13, gold, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(64, 0));
+        if (mark.Length > 0)
+        {
+            double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            if (markDrawing is null || markDpi != dpi)
+            {
+                markText = new FormattedText(mark, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                    MarkFace, state == MascotState.Waiting ? 19 : 13, Gold, dpi); markDpi = dpi;
+                markDrawing = new DrawingGroup();
+                using (var textContext = markDrawing.Open()) textContext.DrawText(markText, new Point(64, 0));
+                markDrawing.Freeze();
+            }
+            dc.DrawDrawing(markDrawing);
+        }
         if (state == MascotState.Working)
         {
-            var light = new SolidColorBrush(Color.FromRgb(165, 220, 255));
-            dc.DrawRoundedRectangle(dim, new Pen(light, 1), new Rect(24, 44, 32, 9), 2, 2);
-            for (int i = 0; i < 4; i++) dc.DrawEllipse(light, null, new Point(29 + i * 7, 48 + (moving ? Math.Sin(phase * 3 + i) : 0)), 1.5, 1);
-            for (int i = 0; i < 3; i++) dc.DrawEllipse(light, null, new Point(68 + i * 3, 42 - ((phase * 6 + i * 5) % 20)), 1, 1);
+            dc.DrawRoundedRectangle(Dim, KeyboardPen, new Rect(24, 44, 32, 9), 2, 2);
+            for (int i = 0; i < 4; i++) dc.DrawEllipse(Light, null, new Point(29 + i * 7, 48 + (moving ? Math.Sin(phase * 3 + i) : 0)), 1.5, 1);
+            for (int i = 0; i < 3; i++) dc.DrawEllipse(Light, null, new Point(68 + i * 3, 42 - ((phase * 6 + i * 5) % 20)), 1, 1);
         }
         dc.Pop();
+    }
+    DrawingGroup BodyDrawing()
+    {
+        if (bodyDrawing is not null) return bodyDrawing;
+        bodyDrawing = new DrawingGroup();
+        using (var dc = bodyDrawing.Open())
+        {
+            if (state == MascotState.Offline) dc.PushOpacity(0.4);
+            dc.DrawDrawing(Load(provider));
+            var eyes = provider == "Claude" ? Dim : RobotEyes;
+            var eyePen = provider == "Claude" ? DarkEyePen : LightEyePen;
+            double eyeY = provider == "Claude" ? 29 : 31;
+            if (state == MascotState.Sleeping)
+            {
+                dc.DrawLine(eyePen, new(29, eyeY), new(34, eyeY)); dc.DrawLine(eyePen, new(46, eyeY), new(51, eyeY));
+            }
+            else if (state == MascotState.Exhausted)
+            {
+                foreach (int x in new[] { 31, 49 })
+                { dc.DrawLine(eyePen, new(x - 3, eyeY - 3), new(x + 3, eyeY + 3)); dc.DrawLine(eyePen, new(x + 3, eyeY - 3), new(x - 3, eyeY + 3)); }
+            }
+            else
+            {
+                dc.DrawRoundedRectangle(eyes, null, new Rect(29, eyeY - 3, 4, state == MascotState.Waiting ? 8 : 6), 1, 1);
+                dc.DrawRoundedRectangle(eyes, null, new Rect(47, eyeY - 3, 4, state == MascotState.Waiting ? 8 : 6), 1, 1);
+            }
+            if (state == MascotState.Offline) dc.Pop();
+        }
+        bodyDrawing.Freeze(); return bodyDrawing;
     }
 }

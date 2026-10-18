@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text.Json;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,6 +17,12 @@ public static class VisualVerification
 {
     public static void Capture(Window window, string name)
     {
+        foreach (var view in Descendants(window).OfType<MascotView>())
+        {
+            ((System.Windows.Threading.DispatcherTimer)typeof(MascotView).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!).Stop();
+            typeof(MascotView).GetField("phase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(view, 1.75);
+            view.InvalidateVisual();
+        }
         window.UpdateLayout();
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth * 1.5), (int)Math.Ceiling(window.ActualHeight * 1.5), 144, 144, PixelFormats.Pbgra32);
         bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
@@ -61,9 +68,20 @@ public static class VisualVerification
                         p.Children.Add(InsightsUi.Text(MascotView.Label(state), 10, InsightsUi.Muted)); grid.Children.Add(p);
                     }
                 gallery.Show(); await Task.Delay(200); Capture(gallery, "visual-mascots"); gallery.Close();
+                // A reused card must still react to a fresh quota and to a session changing state.
+                var quotaField = typeof(MainWindow).GetField("claudeState", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var quota = (ProviderState)quotaField.GetValue(main)!;
+                quotaField.SetValue(main, quota with { Windows = quota.Windows.Select(w => w with { Used = 35 }).ToList() });
+                var sessionField = typeof(MainWindow).GetField("sessions", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var snapshot = (SessionSnapshot)sessionField.GetValue(main)!;
+                sessionField.SetValue(main, snapshot with { Sessions = snapshot.Sessions.Select(s => s.Provider == "Claude"
+                    ? s with { State = "waiting", Directory = "C:/pending-project", Reason = "Odpowiedź" } : s).ToList() });
+                main.SetCompactForTest(true); await Task.Delay(80);
+                texts = Descendants(main).OfType<TextBlock>().Select(t => t.Text).ToList();
+                if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 7, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 7, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

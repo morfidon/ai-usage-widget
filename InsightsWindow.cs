@@ -36,6 +36,7 @@ public sealed class InsightsWindow : Window
     readonly ComboBox projectPeriod = InsightsUi.Choice(new[] { "Ostatnie 7 dni", "Ostatnie 24 godziny" });
     AnalyticsSnapshot analysis = AnalyticsSnapshot.Empty;
     SessionSnapshot sessions = SessionSnapshot.Empty;
+    bool projectsDirty = true, diagnosticsDirty = true, sessionsDirty = true;
     public InsightsWindow(UsageHistory history)
     {
         this.history = history;
@@ -65,6 +66,7 @@ public sealed class InsightsWindow : Window
         tabs.Items.Add(new TabItem { Header = "Sesje", Content = new ScrollViewer { Content = sessionBody, Margin = new Thickness(6, 16, 6, 6), VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, Padding = new Thickness(14, 8, 14, 8) });
         projectProvider.SelectionChanged += (_, _) => RefreshProjects(); projectPeriod.SelectionChanged += (_, _) => RefreshProjects();
         provider.SelectionChanged += (_, _) => RefreshHistory(); period.SelectionChanged += (_, _) => RefreshHistory();
+        tabs.SelectionChanged += (_, e) => { if (ReferenceEquals(e.Source, tabs)) RefreshSelectedDetails(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
         RefreshHistory();
     }
@@ -72,14 +74,27 @@ public sealed class InsightsWindow : Window
     internal void SelectTab(int tab) => tabs.SelectedIndex = tab;
     public void UpdateDetails(AnalyticsSnapshot analytics, SessionSnapshot snapshot)
     {
-        if (!ReferenceEquals(analysis, analytics)) { analysis = analytics; RefreshProjects(); RefreshDiagnostics(); }
-        if (!ReferenceEquals(sessions, snapshot)) { sessions = snapshot; RefreshSessions(); }
+        if (!ReferenceEquals(analysis, analytics))
+        {
+            diagnosticsDirty |= !ReferenceEquals(analysis.Entries, analytics.Entries) || !ReferenceEquals(analysis.Tools, analytics.Tools)
+                || analysis.Loading != analytics.Loading || analysis.Skipped != analytics.Skipped;
+            analysis = analytics; projectsDirty = true;
+        }
+        if (!ReferenceEquals(sessions, snapshot)) { sessions = snapshot; sessionsDirty = true; }
+        RefreshSelectedDetails();
+    }
+    void RefreshSelectedDetails()
+    {
+        if (tabs.SelectedIndex == 1 && projectsDirty) RefreshProjects();
+        else if (tabs.SelectedIndex == 2 && diagnosticsDirty) RefreshDiagnostics();
+        else if (tabs.SelectedIndex == 3 && sessionsDirty) RefreshSessions();
     }
     public static string Tokens(long n) => n >= 1_000_000 ? $"{n / 1_000_000.0:0.##} mln" : n >= 1000 ? $"{n / 1000.0:0.#} tys." : n.ToString("N0");
     public static string Count(int n, string one, string few, string many) => n.ToString("N0") + " "
         + (n == 1 ? one : n % 10 is >= 2 and <= 4 && n % 100 is not (>= 12 and <= 14) ? few : many);
     void RefreshProjects()
     {
+        projectsDirty = false;
         projectBody.Children.Clear();
         string name = (string)projectProvider.SelectedItem;
         var since = DateTimeOffset.Now.AddDays(projectPeriod.SelectedIndex == 0 ? -7 : -1);
@@ -106,6 +121,7 @@ public sealed class InsightsWindow : Window
     }
     void RefreshDiagnostics()
     {
+        diagnosticsDirty = false;
         diagnosticBody.Children.Clear();
         var entries = analysis.Entries.Where(e => e.Provider == "Claude").ToList();
         diagnosticBody.Children.Add(InsightsUi.Text("Claude · ostatnie 7 dni", 19));
@@ -125,6 +141,7 @@ public sealed class InsightsWindow : Window
     }
     void RefreshSessions()
     {
+        sessionsDirty = false;
         sessionBody.Children.Clear();
         sessionBody.Children.Add(InsightsUi.Text("Aktywne sesje na tym komputerze", 19));
         foreach (var name in new[] { "Codex", "Claude" })

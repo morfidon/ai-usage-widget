@@ -56,6 +56,10 @@ public sealed class MainWindow : Window
     DateTimeOffset lastHealth = DateTimeOffset.MinValue;
     string? trayKey;
     readonly Dictionary<string, DateTimeOffset> finishedUntil = new();
+    sealed record CachedCard(ProviderState Source, bool Compact, bool Animate, string Resets, bool Stale,
+        string Expired, ServiceHealth? Health, MascotState Mascot, LiveSession[] Sessions, string? SessionError,
+        FrameworkElement Element, MascotView[] Views);
+    readonly Dictionary<string, CachedCard> cards = new();
     ProviderState codexState = ProviderState.Empty("Codex"), claudeState = ProviderState.Empty("Claude");
     ProviderState devinState = ProviderState.Empty("Devin");
     ProviderState airState = ProviderState.Empty("JetBrains Air");
@@ -384,16 +388,13 @@ public sealed class MainWindow : Window
     void Render()
     {
         double scrollOffset = providerScroll.VerticalOffset;
-        body.Children.Clear();
         pinButton.Foreground = settings.Topmost ? new SolidColorBrush(Mint) : Muted;
         pinButton.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
         brandSubtitle.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
         modeButton.Foreground = settings.Compact ? new SolidColorBrush(Mint) : Muted;
-        body.Children.Add(Card(codexState, CodexAccent));
-        body.Children.Add(Card(claudeState, ClaudeAccent));
-        body.Children.Add(Card(devinState, DevinAccent));
-        body.Children.Add(Card(airState, AirAccent));
-        body.Children.Add(Card(antigravityState, AntigravityAccent));
+        RefreshCard(0, codexState, CodexAccent); RefreshCard(1, claudeState, ClaudeAccent);
+        RefreshCard(2, devinState, DevinAccent); RefreshCard(3, airState, AirAccent);
+        RefreshCard(4, antigravityState, AntigravityAccent);
         var states = new[] { codexState, claudeState, devinState, airState, antigravityState };
         var updates = states.Select(s => s.Updated).Where(d => d.HasValue).ToList();
         footer.FontSize = settings.Compact ? 9 : 10;
@@ -414,6 +415,37 @@ public sealed class MainWindow : Window
         }
         lastPaint = DateTimeOffset.Now;
         if (scrollOffset > 0) Dispatcher.BeginInvoke(() => providerScroll.ScrollToVerticalOffset(scrollOffset), DispatcherPriority.Loaded);
+    }
+    void RefreshCard(int index, ProviderState state, Color color)
+    {
+        string resets = string.Join("\n", state.Windows.Select(w => w.ResetText));
+        bool stale = Stale(state);
+        string expired = string.Concat(state.Windows.Select(w => w.Expired ? '1' : '0'));
+        ServiceHealth? health = state.Name == "Codex" ? codexHealth : state.Name == "Claude" ? claudeHealth : null;
+        var rows = sessions.Sessions.Where(s => s.Provider == state.Name).ToArray();
+        string? error = state.Name is "Codex" or "Claude" ? sessions.ErrorFor(state.Name) : null;
+        bool finished = finishedUntil.TryGetValue(state.Name, out var until) && until > DateTimeOffset.Now;
+        var mascot = state.Name is "Codex" or "Claude" ? MascotView.Choose(state, sessions, finished) : MascotState.Sleeping;
+        if (cards.TryGetValue(state.Name, out var old) && ReferenceEquals(old.Source, state)
+            && old.Compact == settings.Compact && old.Animate == settings.AnimateMascots && old.Resets == resets
+            && old.Stale == stale && old.Expired == expired && old.Health == health && old.Mascot == mascot
+            && old.SessionError == error && old.Sessions.SequenceEqual(rows))
+        {
+            // Keep the existing animation's reset at each logical refresh, without rebuilding its card.
+            foreach (var view in old.Views) view.ResetPhase();
+            return;
+        }
+        var element = Card(state, color);
+        var views = FindMascots(element).ToArray();
+        cards[state.Name] = new(state, settings.Compact, settings.AnimateMascots, resets, stale, expired, health, mascot, rows, error, element, views);
+        if (body.Children.Count <= index) body.Children.Add(element);
+        else { body.Children.RemoveAt(index); body.Children.Insert(index, element); }
+    }
+    static IEnumerable<MascotView> FindMascots(DependencyObject parent)
+    {
+        if (parent is MascotView view) yield return view;
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            foreach (var child in FindMascots(VisualTreeHelper.GetChild(parent, i))) yield return child;
     }
     FrameworkElement Card(ProviderState state, Color color)
     {
