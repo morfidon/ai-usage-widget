@@ -125,9 +125,11 @@ public static class VisualVerification
                 goBack.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); projects.UpdateDetails(currentAnalysis, sampleSessions);
                 main.InsightsForTest(0); await Task.Delay(80); Capture(projects, "visual-history-narrow");
                 var scratch = new UsageHistory(Path.Combine(Settings.DataDirectory, "visual-empty-" + Guid.NewGuid() + ".json"));
-                string? openedThread = null; bool failOpen = false;
+                string? openedThread = null, openedClaudeThread = null; bool failOpen = false;
                 const string targetThread = "019ef3c1-1234-7123-8123-0123456789ab";
-                var navigation = new InsightsWindow(scratch, false, id => { openedThread = id; return failOpen ? "Nie udało się otworzyć Codex. Spróbuj ponownie." : null; });
+                var navigation = new InsightsWindow(scratch, false,
+                    id => { openedThread = id; return failOpen ? "Nie udało się otworzyć Codex. Spróbuj ponownie." : null; },
+                    id => { openedClaudeThread = id; return failOpen ? "Nie udało się otworzyć Claude Desktop. Spróbuj ponownie." : null; });
                 var navigationRows = new[] { "Codex", "Claude" }.Select(name => new TokenEntry(name, "test-project", targetThread, "model", DateTimeOffset.Now, 20, 100, 0, 10, false)).ToList();
                 navigation.UpdateDetails(currentAnalysis with { Entries = navigationRows }, SessionSnapshot.Empty);
                 navigation.SelectTab(1); navigation.Show(); await Task.Delay(80);
@@ -144,6 +146,15 @@ public static class VisualVerification
                 navigation.SelectProvider("Claude", false); await Task.Delay(60);
                 FindProjectLink().RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(60);
                 if (Descendants(navigation).OfType<Button>().Any(b => System.Windows.Automation.AutomationProperties.GetName(b).StartsWith("Otwórz w Codex:"))) throw new Exception("Claude sessions must not open in Codex");
+                openedThread = null; failOpen = false;
+                var claudeLink = Descendants(navigation).OfType<Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b).StartsWith("Otwórz w Claude:"));
+                claudeLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                for (int attempt = 0; attempt < 40 && !claudeLink.IsEnabled; attempt++) await Task.Delay(25);
+                if (openedClaudeThread != targetThread || openedThread is not null || !claudeLink.IsEnabled) throw new Exception("Claude click did not target the exact Claude conversation");
+                Capture(navigation, "visual-project-open-claude-session");
+                failOpen = true; claudeLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                for (int attempt = 0; attempt < 40 && !claudeLink.IsEnabled; attempt++) await Task.Delay(25);
+                if (!Descendants(navigation).OfType<TextBlock>().Any(t => t.IsVisible && t.Text.StartsWith("Nie udało się otworzyć Claude Desktop"))) throw new Exception("Claude navigation failure is invisible");
                 navigation.Close();
                 var edge = new InsightsWindow(scratch); edge.SelectTab(0); edge.Show(); await Task.Delay(80); Capture(edge, "visual-history-empty");
                 if (!Descendants(edge).OfType<TextBlock>().Any(t => t.Text == "Jeszcze bez odczytów")) throw new Exception("History empty state missing");
@@ -198,7 +209,7 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 23, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 24, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

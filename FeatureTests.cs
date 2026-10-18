@@ -23,6 +23,10 @@ public static class FeatureTests
                 "Codex navigation targets the exact existing thread without prompt or wake parameters");
             Check(new[] { "", "new", "../new", threadId + "?prompt=hello", "codex://threads/" + threadId, Guid.Empty.ToString() }
                 .All(id => CodexNavigation.ThreadUri(id) is null), "Invalid session IDs cannot become a Codex navigation command");
+            Check(ClaudeNavigation.ThreadUri(threadId) == "claude://resume?session=" + threadId,
+                "Claude navigation resumes the exact local conversation without a prompt");
+            Check(new[] { "", "last", "../new", threadId + "&prompt=hello", "claude://resume?session=" + threadId, Guid.Empty.ToString() }
+                .All(id => ClaudeNavigation.ThreadUri(id) is null), "Invalid session IDs cannot become a Claude navigation command");
             var at = DateTimeOffset.UtcNow;
             var projectRows = new[] {
                 new TokenEntry("Codex", "project-a", "session-a", "model-a", at, 10, 90, 0, 0, false),
