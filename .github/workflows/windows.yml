@@ -1,0 +1,44 @@
+name: Windows verification
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build and self-tests
+        shell: powershell
+        run: ./build.ps1
+      - name: Claude bridge fixtures
+        shell: powershell
+        run: ./tests/test_bridge.ps1
+      - name: Install, reinstall and rollback in isolated fixtures
+        shell: powershell
+        run: ./tests/test_install.ps1
+      - name: Setup preflight
+        shell: powershell
+        run: ./setup.ps1 -CheckOnly -Providers Codex
+      - name: Visual fixtures
+        shell: powershell
+        run: |
+          dotnet ./dist/AIUsageWidget.dll --visual-test
+          if ($LASTEXITCODE -ne 0) { throw 'Visual verification failed.' }
+      - name: Preserve synthetic verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-verification
+          path: |
+            data/visual-*.png
+            .verify/install-*/data/setup-diagnostic.json
+          if-no-files-found: ignore
