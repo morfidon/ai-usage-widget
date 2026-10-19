@@ -18,7 +18,7 @@ $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
 Push-Location -LiteralPath $PSScriptRoot
 try {
     # Resolve global.json from this checkout even when invoked from another directory.
-    & $dotnet build (Join-Path $PSScriptRoot 'AIUsageWidget.csproj') -c Release -o $OutputDirectory --nologo
+    & $dotnet publish (Join-Path $PSScriptRoot 'AIUsageWidget.csproj') -c Release -o $OutputDirectory --self-contained false --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
     & $dotnet (Join-Path $OutputDirectory 'AIUsageWidget.dll') --self-test
     if ($LASTEXITCODE -ne 0) { throw 'Self-tests failed.' }

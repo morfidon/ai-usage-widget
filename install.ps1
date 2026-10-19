@@ -85,6 +85,16 @@ if (Test-Path -LiteralPath $central) {
     Copy-Item -LiteralPath $central -Destination (Join-Path $InstallDirectory 'tools/central/central.exe') -Force
 }
 $layout = [ordered]@{ Application = 'AIUsageWidget'; SchemaVersion = 1; DataDirectory = $DataDirectory }
+# A private SDK is never registered globally. Copy its runtime so the apphost also works at next logon.
+$privateDotNet = Join-Path $env:LOCALAPPDATA 'AIUsageWidget/dotnet'
+if (Test-Path -LiteralPath (Join-Path $privateDotNet 'dotnet.exe')) {
+    $runtimeDirectory = Join-Path $InstallDirectory 'dotnet'
+    [IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null
+    foreach ($component in @('host','shared','dotnet.exe','LICENSE.txt','ThirdPartyNotices.txt')) {
+        $componentPath = Join-Path $privateDotNet $component
+        if (Test-Path -LiteralPath $componentPath) { Copy-Item -LiteralPath $componentPath -Destination $runtimeDirectory -Recurse -Force }
+    }
+}
 [IO.File]::WriteAllText($layoutPath, ($layout | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 
 $newBridge = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + (Join-Path $InstallDirectory 'claude-bridge.ps1').Replace('\','/') + '"'

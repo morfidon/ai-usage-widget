@@ -9,6 +9,8 @@
     <AssemblyName>AIUsageWidget</AssemblyName>
     <Version>1.0.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AppHostRelativeDotNet>../dotnet</AppHostRelativeDotNet>
+    <AppHostDotNetSearch>AppRelative;Global</AppHostDotNetSearch>
     <DefaultItemExcludes>$(DefaultItemExcludes);dist/**;data/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
