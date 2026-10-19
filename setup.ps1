@@ -21,6 +21,7 @@ try {
     if ($PSBoundParameters.ContainsKey('Providers')) {
         # Both a PowerShell array and a comma-separated string work with powershell.exe -File.
         $Providers = @($Providers | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Select-Object -Unique)
+        if ($Providers.Count -eq 1 -and $Providers[0] -eq 'None') { $Providers = @() }
         foreach ($name in $Providers) { if ($name -notin $valid) { throw "Unknown provider '$name'. Choose: $($valid -join ', ')." } }
     } else {
         $settingsPath = Join-Path $DataDirectory 'settings.json'
@@ -32,7 +33,10 @@ try {
             $Providers = if ($null -ne $existing.EnabledProviders) { @($existing.EnabledProviders) } else { $valid }
         } else { $Providers = @(Get-WidgetDetectedProviders) }
     }
-    if ($Providers.Count -eq 0) { throw 'No supported clients detected. Install and sign in to a provider app, then rerun; or select explicitly, e.g. -Providers Codex.' }
+    # Keep empty selections as [] rather than null/[null] across PowerShell's pipeline unrolling.
+    $selectedNames = @($Providers)
+    $Providers = @($valid | Where-Object { $_ -in $selectedNames })
+    if ($Providers.Count -eq 0) { Write-Output 'No providers selected. Installation will show a provider chooser; you can enable accounts later in the widget menu.' }
     if ($ClaudeBridge -eq 'Enable' -and 'Claude' -notin $Providers) { throw 'Select Claude before enabling its status line bridge.' }
     try { $dotnet = Assert-WidgetDotNet $PSScriptRoot }
     catch {

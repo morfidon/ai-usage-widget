@@ -60,6 +60,10 @@ agent. Runtime use does not require Python, Node, or NuGet packages.
   for UI changes. `--doctor` performs real quota reads; do not confuse it with an offline test.
 - Preserve order: Codex, Claude, Devin, JetBrains Air, Antigravity. Legacy settings
   without `EnabledProviders` retain all five; new setup stores the selected subset.
+  Users can toggle providers live in the widget/tray **Dostawcy** menu, including
+  disabling every provider. Empty selection is valid: setup installs a chooser view
+  instead of requiring extra clients. `-Providers None` explicitly selects none.
+  Never hide a selected card merely because of a transient outage or expired login.
 - Keep notifications, keyboard behavior, quota meaning (remaining percentage), real
   reset times, stale-data handling and existing user settings intact unless requested.
 - No model prompts, inference, new conversations, agent wiring or proxy startup for

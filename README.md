@@ -6,8 +6,8 @@ one small window. Checking limits does not send prompts or run model tasks.
 
 ## Quick start (Windows x64)
 
-You need **native Windows 10/11 x64**, a writable checkout, and a signed-in supported
-provider app. Use 64-bit Windows PowerShell 5.1 or PowerShell 7. WSL/Linux/macOS,
+You need **native Windows 10/11 x64** and a writable checkout. A signed-in provider
+app is needed to show its limits; you can prepare the widget before installing any clients. Use 64-bit Windows PowerShell 5.1 or PowerShell 7. WSL/Linux/macOS,
 Windows ARM64 and x86 are outside the supported setup path. The widget UI is Polish;
 these setup instructions and the agent guide are English.
 
@@ -41,7 +41,13 @@ The Claude bridge changes your Claude Code status line, keeps a backup, and invo
 your previous status line command. Autostart adds a current-user Windows Run entry.
 Both options also accept `Disable`; the default is `Keep`. Provider selection controls
 quota polling, session monitoring and local transcript indexing. Later setup runs
-reuse saved provider selection unless you pass `-Providers` again.
+reuse saved provider selection unless you pass `-Providers` again. You can also change
+providers at any time in **••• → Dostawcy** or the tray icon menu, without restarting.
+Uncheck accounts you do not want to monitor, even when their apps are installed.
+The first standalone launch selects detected clients; existing saved choices are respected.
+A temporary connection/login problem keeps a selected card visible with its status.
+If no clients are detected or all are unchecked, the widget shows a short chooser
+instruction. You can explicitly prepare an empty install with `-Providers None`.
 
 | Result | Meaning | Next step |
 |---|---|---|
@@ -132,6 +138,7 @@ Natywny widget Windows pokazujący jednocześnie pozostałe limity subskrypcji C
 
 ## Obsługa
 
+- W menu **••• → Dostawcy** lub pod prawym przyciskiem ikony przy zegarze zaznacz konta, które chcesz widzieć. Zmiany działają od razu i są zapamiętywane. **Wybierz wykryte aplikacje** zastępuje wybór aplikacjami znalezionymi na tym komputerze. Chwilowy brak połączenia nie ukrywa zaznaczonej karty.
 - Uruchom **AI Usage Widget** z menu Start. `Uruchom widget.cmd` uruchamia lokalną wersję z `dist`, przeznaczoną do pracy nad kodem.
 - Przeciągnij nagłówek, aby przesunąć okno. Położenie i wybrany tryb są zapamiętywane.
 - `◆` włącza lub wyłącza pozostawanie nad innymi oknami.
@@ -203,6 +210,6 @@ dotnet .\dist\AIUsageWidget.dll --diagnose
 
 Porównanie wydajności, zakres pomiarów i ograniczenia opisano w [PERFORMANCE_2026-10-18.md](PERFORMANCE_2026-10-18.md). Powtarzalne testy A/B uruchamia `tests/run_performance.ps1`; nie wywołują modeli.
 
-Dodatkowe polecenia: `--diagnose-activity` sprawdza sesje i pojedynczy fragment analizy; `--diagnose-activity --full-history` kończy indeksowanie ostatniego tygodnia. Wynik diagnostyczny zawiera tylko liczniki i błędy źródeł. `--visual-test` sprawdza widok kompaktowy, przycisk historii, zakładki, SVG, ukrywanie i przywracanie okna na osobnych danych testowych oraz wejście z przycisków dostawców, rozdzielenie modeli i sesji, wspólny filtr okresu, rankingi sesji i modeli projektu, paginację, otwieranie dokładnej sesji Codex i Claude oraz obsługę błędu bez uruchamiania zewnętrznej aplikacji podczas testu, rozwijanie szczegółów po odświeżeniu, małe okno oraz pustą i nieciągłą historię; zapisuje 25 podglądów (także widok z jednym wybranym dostawcą) (w tym przeglądy Codex/Claude, szczegóły projektów i podpowiedzi) `data/visual-*.png`. Test nie zmienia Twoich ustawień ani prawdziwej historii limitów.
+Dodatkowe polecenia: `--diagnose-activity` sprawdza sesje i pojedynczy fragment analizy; `--diagnose-activity --full-history` kończy indeksowanie ostatniego tygodnia. Wynik diagnostyczny zawiera tylko liczniki i błędy źródeł. `--visual-test` sprawdza widok kompaktowy, przycisk historii, zakładki, SVG, ukrywanie i przywracanie okna na osobnych danych testowych oraz wejście z przycisków dostawców, rozdzielenie modeli i sesji, wspólny filtr okresu, rankingi sesji i modeli projektu, paginację, otwieranie dokładnej sesji Codex i Claude oraz obsługę błędu bez uruchamiania zewnętrznej aplikacji podczas testu, rozwijanie szczegółów po odświeżeniu, małe okno oraz pustą i nieciągłą historię; zapisuje 27 podglądów (także widok z jednym wybranym dostawcą) (w tym przeglądy Codex/Claude, szczegóły projektów i podpowiedzi) `data/visual-*.png`. Test nie zmienia Twoich ustawień ani prawdziwej historii limitów.
 
 `build.ps1` uruchamia testy parserów, terminów resetu i ograniczeń odnowienia logowania, w tym limity Devin, wartości zerowe pomijane przez protobuf, brak dziennego limitu Max, bezpieczne adresy serwera, stringi liczbowe JetBrains, milisekundy resetu, osobne pule miesięczne i dodatkowe oraz brakujące i nielimitowane pule. `tests/test_bridge.ps1` sprawdza zapis cache, zachowanie wcześniejszego paska i odfiltrowanie wrażliwych pól na oddzielnych danych testowych. `--diagnose` sprawdza rzeczywiste połączenia wybranych dostawców. `--doctor` rozróżnia gotowość, brak logowania, wyłączonego dostawcę i błędy konfiguracji. `--diagnose-antigravity` sprawdza tylko lokalny odczyt Antigravity i zapisuje pozbawiony danych konta wynik do `data/antigravity-diagnostic.json`. Testy Antigravity obejmują dwie podstawowe grupy i cztery niezależne limity, oddzielny tygodniowy limit Argon, terminy resetu, pominięte zera protobuf, brakujące i wyłączone pule, niepoprawne wartości, stabilną kolejność, zgodność cache oraz uczciwy odczyt zastępczy bez limitów tygodniowych. Połączenia są ograniczone do lokalnych metod odczytu. `--capture` zapisuje podgląd aktualnego okna do `data/preview.png` i sprawdzenie widoczności do `data/window-check.json` po 12 sekundach.

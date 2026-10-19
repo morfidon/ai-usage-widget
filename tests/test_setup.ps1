@@ -50,5 +50,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Repeated setup failed.' }
 if ($LASTEXITCODE -ne 3) { throw 'Pending login must exit 3, not pretend success or installation failure.' }
 $pending = Get-Content -LiteralPath (Join-Path $fixture 'data/setup-result.json') -Raw | ConvertFrom-Json
 if (-not $pending.Installed -or ($pending.Checks | Where-Object { $_.Provider -eq 'Codex' }).Status -ne 'login_required') { throw 'Login handoff result was not recorded.' }
+$noneOptions = @($options)
+$noneOptions[$providerOption + 1] = 'None'
+& powershell.exe @noneOptions
+if ($LASTEXITCODE -ne 0) { throw 'Setup must support an intentionally empty provider selection.' }
+$empty = Get-Content -LiteralPath (Join-Path $fixture 'data/setup-result.json') -Raw | ConvertFrom-Json
+if ($empty.Providers.Count -ne 0 -or ($empty.Checks | Where-Object { $_.Status -ne 'not_selected' })) { throw 'An empty provider selection unexpectedly probes accounts.' }
+& powershell.exe @repeatOptions
+if ($LASTEXITCODE -ne 0) { throw 'Saved empty selection was not preserved on repeat setup.' }
+$savedEmpty = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+if ($null -eq $savedEmpty.EnabledProviders -or $savedEmpty.EnabledProviders.Count -ne 0) { throw 'An empty provider selection must remain a JSON array, not null or [null].' }
 & (Join-Path $fixture 'app/uninstall.ps1')
 Write-Output "PASS End-to-end setup, saved selection, pending login handoff and preserved preferences; UI explicitly skipped. Fixture: $fixture"

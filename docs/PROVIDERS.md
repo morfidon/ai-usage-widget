@@ -4,6 +4,20 @@ You only need the providers you actually use. Select them with
 `setup.ps1 -Providers "Codex,Claude"`, for example. Missing unselected providers
 are reported as `not_selected`; they do not make setup fail.
 
+You can change the selection live in **••• → Dostawcy**, or by right-clicking the tray
+icon and opening **Dostawcy**. Uncheck any provider you do not want, regardless of
+whether it is installed. Hidden providers stop quota/session reads and live transcript
+indexing; their saved quota history is retained. Any read already running is cancelled
+when the selection changes.
+
+**Wybierz wykryte aplikacje** replaces your current selection with detected native
+clients; it does not check login or make account requests. Automatic selection runs
+only for a new configuration. Later launches keep your saved choices. Connection
+errors, expired logins and a closed Antigravity app do not silently hide selected cards.
+
+No clients yet? Setup can still install the widget. Use `-Providers None` to explicitly
+start with no cards, then select providers from the menu when you are ready.
+
 | Provider | What you need | User login action | How the widget reads limits | Expected result |
 |---|---|---|---|---|
 | Codex | Codex for Windows or a native `codex.exe` supporting `app-server` | Open Codex and sign in to your subscription account. | Locates `%LOCALAPPDATA%\OpenAI\Codex\bin\**\codex.exe`, then native executables on PATH; uses `account/rateLimits/read`. | `ready`; only the quota windows the account actually returns appear. |
