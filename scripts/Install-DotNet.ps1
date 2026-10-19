@@ -20,7 +20,7 @@ function Install-WidgetDotNet([string]$Destination = (Join-Path $env:LOCALAPPDAT
         if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA512).Hash -ne $file.hash) { throw 'SDK checksum mismatch; existing SDK was preserved.' }
         Expand-Archive -LiteralPath $archivePath -DestinationPath $stage
         $exe = Join-Path $stage 'dotnet.exe'
-        $actual = & $exe --version
+        $actual = & $exe --version | Select-Object -Last 1
         if ($LASTEXITCODE -ne 0 -or $actual -ne $version) { throw 'Downloaded SDK did not pass version verification.' }
         $runtimes = & $exe --list-runtimes
         if ($LASTEXITCODE -ne 0 -or -not ($runtimes -match '^Microsoft.WindowsDesktop.App 9\.0\.')) { throw 'SDK archive did not contain the required Desktop Runtime.' }

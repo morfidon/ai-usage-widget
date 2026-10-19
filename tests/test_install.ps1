@@ -54,6 +54,36 @@ try {
     $failed = $false
     try { & (Join-Path $root 'install.ps1') @options -ClaudeBridge Enable } catch { $failed = $true }
     Check ($failed -and [IO.File]::ReadAllText($settingsPath) -eq '{broken') 'Malformed Claude settings fail without rewriting the file'
+
+    # Migration uses a fully synthetic old checkout; no real user data is copied.
+    $legacy = Join-Path $fixture 'legacy-source'
+    [IO.Directory]::CreateDirectory((Join-Path $legacy 'scripts')) | Out-Null
+    [IO.Directory]::CreateDirectory((Join-Path $legacy 'data')) | Out-Null
+    foreach ($name in @('install.ps1','uninstall.ps1','claude-bridge.ps1','Connect JetBrains Air.cmd')) {
+        Copy-Item -LiteralPath (Join-Path $root $name) -Destination $legacy
+    }
+    foreach ($name in @('Prerequisites.ps1','Layout.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $root "scripts/$name") -Destination (Join-Path $legacy "scripts/$name")
+    }
+    $oldBridge = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + (Join-Path $legacy 'claude-bridge.ps1').Replace('\','/') + '"'
+    $oldExe = Join-Path $legacy 'dist/AIUsageWidget.exe'
+    [IO.File]::WriteAllText($settingsPath, (@{ theme = 'legacy'; statusLine = @{ type = 'command'; command = $oldBridge } } | ConvertTo-Json))
+    [IO.File]::WriteAllText((Join-Path $legacy 'data/claude-statusline-backup.json'), '{"statusLine":{"type":"command","command":"echo pre-widget"}}')
+    [IO.File]::WriteAllText((Join-Path $legacy 'data/install-state.json'), (@{ claudeSettings = $settingsPath; bridgeCommand = $oldBridge; executable = $oldExe } | ConvertTo-Json))
+    [IO.File]::WriteAllText((Join-Path $legacy 'data/settings.json'), '{"Compact":true}')
+    Set-ItemProperty -LiteralPath $runKey -Name AIUsageWidget -Value ('"' + $oldExe + '" --startup')
+    $migration = $options.Clone()
+    $migration.InstallDirectory = Join-Path $fixture 'migrated-app'
+    $migration.DataDirectory = Join-Path $fixture 'migrated-data'
+    $migration.SkipLegacyMigration = $false
+    & (Join-Path $legacy 'install.ps1') @migration
+    $migrated = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+    Check ($migrated.statusLine.command.Contains($migration.InstallDirectory.Replace('\','/'))) 'Migration redirects the existing Claude bridge to the stable installation'
+    Check ((Get-Content -LiteralPath (Join-Path $migration.DataDirectory 'claude-statusline-backup.json') -Raw | ConvertFrom-Json).statusLine.command -eq 'echo pre-widget') 'Migration preserves the pre-widget status line backup'
+    Check ((Get-ItemProperty -LiteralPath $runKey).AIUsageWidget.Contains($migration.InstallDirectory)) 'Migration redirects existing autostart to the stable executable'
+    Check (Test-Path -LiteralPath (Join-Path $legacy 'data/settings.json')) 'Migration retains original data for recovery'
+    & (Join-Path $migration.InstallDirectory 'uninstall.ps1')
+    Check ((Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json).statusLine.command -eq 'echo pre-widget') 'Uninstall after migration restores the pre-widget status line'
     Write-Output "Installation lifecycle passed. Fixture retained: $fixture"
 } finally {
     $env:CLAUDE_CONFIG_DIR = $priorClaude

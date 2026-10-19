@@ -6,7 +6,11 @@ param(
     [switch]$NoLaunch,
     [switch]$CheckOnly,
     [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs/AIUsageWidget'),
-    [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'AIUsageWidget/data')
+    [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'AIUsageWidget/data'),
+    [string]$BuildDirectory = (Join-Path $PSScriptRoot 'dist'),
+    [switch]$SkipLegacyMigration,
+    [string]$RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
+    [string]$ShortcutDirectory = ([Environment]::GetFolderPath('Programs'))
 )
 $ErrorActionPreference = 'Stop'
 try {
@@ -20,6 +24,9 @@ try {
         foreach ($name in $Providers) { if ($name -notin $valid) { throw "Unknown provider '$name'. Choose: $($valid -join ', ')." } }
     } else {
         $settingsPath = Join-Path $DataDirectory 'settings.json'
+        if (-not (Test-Path -LiteralPath $settingsPath) -and -not $SkipLegacyMigration) {
+            $settingsPath = Join-Path $PSScriptRoot 'data/settings.json'
+        }
         if (Test-Path -LiteralPath $settingsPath) {
             $existing = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
             $Providers = if ($null -ne $existing.EnabledProviders) { @($existing.EnabledProviders) } else { $valid }
@@ -39,10 +46,10 @@ try {
         exit 0
     }
     Assert-WidgetWritableDirectory $DataDirectory
-    & (Join-Path $PSScriptRoot 'build.ps1')
+    & (Join-Path $PSScriptRoot 'build.ps1') -OutputDirectory $BuildDirectory
     & (Join-Path $PSScriptRoot 'tests/test_bridge.ps1')
     if ('JetBrains Air' -in $Providers) { & (Join-Path $PSScriptRoot 'install-central.ps1') }
-    & (Join-Path $PSScriptRoot 'install.ps1') -NoLaunch -InstallDirectory $InstallDirectory -DataDirectory $DataDirectory -Autostart $Autostart -ClaudeBridge $ClaudeBridge
+    & (Join-Path $PSScriptRoot 'install.ps1') -NoLaunch -InstallDirectory $InstallDirectory -DataDirectory $DataDirectory -Autostart $Autostart -ClaudeBridge $ClaudeBridge -BuildDirectory $BuildDirectory -SkipLegacyMigration:$SkipLegacyMigration -RunKeyPath $RunKeyPath -ShortcutDirectory $ShortcutDirectory
     $settingsPath = Join-Path $DataDirectory 'settings.json'
     $settings = if (Test-Path -LiteralPath $settingsPath) { Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
     $settings | Add-Member -NotePropertyName EnabledProviders -NotePropertyValue @($Providers) -Force

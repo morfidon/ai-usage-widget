@@ -8,7 +8,7 @@ function Get-WidgetDetectedProviders {
     if (Test-Path -LiteralPath (Join-Path $env:APPDATA 'devin/User/globalStorage/state.vscdb')) { $found += 'Devin' }
     if ((Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.local/bin/central.exe')) -or
         (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.jetbrains-central'))) { $found += 'JetBrains Air' }
-    if ((Get-Process -Name Antigravity,language_server,language_server_windows_x64 -ErrorAction SilentlyContinue) -or
+    if ((Get-Process -Name Antigravity -ErrorAction SilentlyContinue) -or
         (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs/Antigravity'))) { $found += 'Antigravity' }
     return $found
 }

@@ -30,7 +30,7 @@ function Assert-WidgetDotNet([string]$Root) {
     if (-not $exe) { throw 'Missing .NET 9 SDK. Run setup.ps1 -InstallPrerequisites or install the Windows x64 .NET 9 SDK from https://dotnet.microsoft.com/download/dotnet/9.0 and reopen PowerShell.' }
     Push-Location -LiteralPath $Root
     try {
-        $selected = & $exe --version 2>$null
+        $selected = & $exe --version 2>$null | Select-Object -Last 1
         if ($LASTEXITCODE -ne 0 -or $selected -notmatch '^9\.0\.\d+$') {
             throw 'A stable .NET 9 SDK is required by global.json. Run setup.ps1 -InstallPrerequisites, or install the Windows x64 .NET 9 SDK.'
         }

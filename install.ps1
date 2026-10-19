@@ -6,6 +6,7 @@ param(
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'AIUsageWidget/data'),
     [string]$BuildDirectory = (Join-Path $PSScriptRoot 'dist'),
     [switch]$SkipLegacyMigration,
+    [string]$DotNetDirectory = (Join-Path $env:LOCALAPPDATA 'AIUsageWidget/dotnet'),
     # Overrides allow lifecycle tests to use isolated registry keys and shortcuts.
     [string]$RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
     [string]$ShortcutDirectory = ([Environment]::GetFolderPath('Programs'))
@@ -86,7 +87,7 @@ if (Test-Path -LiteralPath $central) {
 }
 $layout = [ordered]@{ Application = 'AIUsageWidget'; SchemaVersion = 1; DataDirectory = $DataDirectory }
 # A private SDK is never registered globally. Copy its runtime so the apphost also works at next logon.
-$privateDotNet = Join-Path $env:LOCALAPPDATA 'AIUsageWidget/dotnet'
+$privateDotNet = $DotNetDirectory
 if (Test-Path -LiteralPath (Join-Path $privateDotNet 'dotnet.exe')) {
     $runtimeDirectory = Join-Path $InstallDirectory 'dotnet'
     [IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null

@@ -22,12 +22,18 @@ jobs:
       - name: Claude bridge fixtures
         shell: powershell
         run: ./tests/test_bridge.ps1
+      - name: Publication hygiene
+        shell: powershell
+        run: ./scripts/audit-publication.ps1
       - name: Install, reinstall and rollback in isolated fixtures
         shell: powershell
         run: ./tests/test_install.ps1
       - name: Setup preflight
         shell: powershell
         run: ./setup.ps1 -CheckOnly -Providers Codex
+      - name: Synthetic end-to-end setup
+        shell: powershell
+        run: ./tests/test_setup.ps1
       - name: Visual fixtures
         shell: powershell
         run: |
