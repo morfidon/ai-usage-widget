@@ -29,7 +29,7 @@ FFmpeg is needed only to encode this documentation GIF, not to use the widget.
 
 | Asset | Contents |
 |---|---|
-| `demo.gif` | 66 frames at 6 fps: two providers, hiding Claude through its real menu handler, then opening Codex quota history. The native mascots animate between frames. |
+| `demo.gif` | 132 frames at 12 fps: two providers, hiding Claude through its real menu handler, then opening Codex quota history. The native mascots animate between frames. |
 | `overview.png` | Static first frame of the demo, including its sample-data label. |
 | `widget.png` | Compact Codex/Claude widget with sample activity. |
 | `one-provider.png` | Widget after hiding Claude. |

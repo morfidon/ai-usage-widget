@@ -43,8 +43,8 @@ foreach ($name in @('overview.png','widget.png','one-provider.png','history.png'
 }
 $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
 if (-not $ffmpeg) { throw 'PNGs were exported. Install FFmpeg to encode the documentation GIF; it is not needed by the widget.' }
-& $ffmpeg.Source -hide_banner -loglevel error -y -framerate 6 -i (Join-Path $rendered 'frames/frame-%03d.png') `
+& $ffmpeg.Source -hide_banner -loglevel error -y -framerate 12 -i (Join-Path $rendered 'frames/frame-%03d.png') `
     -filter_complex '[0:v]split[a][b];[a]palettegen=max_colors=192:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle' `
-    -frames:v 66 -loop 0 (Join-Path $media 'demo.gif')
+    -frames:v 132 -loop 0 (Join-Path $media 'demo.gif')
 if ($LASTEXITCODE -ne 0) { throw 'GIF encoding failed.' }
 Write-Output "README media exported to $media. No provider accounts were queried."

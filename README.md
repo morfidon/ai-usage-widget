@@ -24,7 +24,9 @@ English is the default; Polish is available in Options. [Prefer still images?](#
 - **Your choice of providers.** Detect installed clients, then show or hide any
   provider from the widget or tray menu. Changes apply without restarting.
 - **Sessions that need you.** Codex and Claude show active projects, work in progress
-  and requests waiting for input, with animated mascots.
+  and requests waiting for input. Codex and Claude have expressive companions:
+  typing while working, waving when they need you, and breathing softly at rest.
+  A text label explains each state; character animations can be switched off in Options.
 - **History behind the numbers.** Explore quota history, projects, sessions and model
   token totals. Local token estimates remain separate from subscription percentages.
 - **A widget that stays out of the way.** Switch between compact and full views,
