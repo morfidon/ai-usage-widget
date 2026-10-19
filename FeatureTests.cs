@@ -18,6 +18,11 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
+            var periodNow = new DateTimeOffset(2026, 10, 19, 13, 45, 0, TimeSpan.FromHours(2));
+            Check(InsightsWindow.PeriodStart(0, periodNow) == periodNow.AddHours(-24), "Statistics retain a rolling 24-hour range");
+            Check(InsightsWindow.PeriodStart(1, periodNow) == periodNow.AddDays(-7), "Statistics retain a seven-day range");
+            Check(InsightsWindow.PeriodStart(2, periodNow) == new DateTimeOffset(periodNow.Date, TimeZoneInfo.Local.GetUtcOffset(periodNow.Date)), "Today starts at local midnight");
+            Check(InsightsWindow.PeriodStart(3, periodNow) == periodNow.AddHours(-1), "Hourly statistics use a rolling hour");
             string discoveryRoot = Path.Combine(dir, "discovery");
             Directory.CreateDirectory(discoveryRoot);
             string[] Detect() => ProviderDiscovery.Detect(new Settings(), discoveryRoot, discoveryRoot, discoveryRoot, "", discoveryRoot);

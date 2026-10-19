@@ -57,6 +57,12 @@ public static class VisualVerification
                     scoped.SelectSessions(); await Task.Delay(80);
                     var sessionTexts = Descendants(scoped).OfType<TextBlock>().Select(t => t.Text).ToList();
                     if (sessionTexts.Contains(providerName == "Claude" ? "Weryfikacja tłumaczeń" : "Przegląd interfejsu")) throw new Exception("Sessions leaked across providers");
+                    var stateChoice = Descendants(scoped).OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "Stan sesji");
+                    var periodControl = Descendants(scoped).OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "Okres statystyk");
+                    if (periodControl.IsEnabled) throw new Exception("Live sessions should not imply a historical time filter");
+                    stateChoice.SelectedIndex = 1; await Task.Delay(60);
+                    if (Descendants(scoped).OfType<TextBlock>().Any(t => t.Text == L.T("Czeka na Ciebie"))) throw new Exception("Working filter includes waiting sessions");
+                    stateChoice.SelectedIndex = 0;
                     scoped.SelectTab(2); await Task.Delay(80);
                     var modelTexts = Descendants(scoped).OfType<TextBlock>().Select(t => t.Text).ToList();
                     if (!modelTexts.Contains(providerName.ToLowerInvariant()) || modelTexts.Contains(providerName == "Claude" ? "codex" : "claude")) throw new Exception("Models leaked across providers");
@@ -106,6 +112,32 @@ public static class VisualVerification
                 drillRows.Add(new("Claude", "O:/projects/deep-project", "test-20", "foreign-model", DateTimeOffset.Now, 9000000, 0, 0, 0, false));
                 projects.UpdateDetails(currentAnalysis with { Entries = drillRows }, SessionSnapshot.Empty);
                 projects.Width = 820; projects.Height = 760; await Task.Delay(80); Capture(projects, "visual-projects-ranking-entry");
+                var search = Descendants(projects).OfType<TextBox>().Single(t => AutomationProperties.GetName(t) == "Szukaj projektu");
+                search.Text = "not-a-project"; await Task.Delay(60);
+                if (Descendants(projects).OfType<Button>().Any(b => AutomationProperties.GetName(b).StartsWith("Otwórz projekt "))) throw new Exception("Project search left unmatched results");
+                search.Text = "DEEP-PROJECT"; await Task.Delay(60);
+                if (!Descendants(projects).OfType<Button>().Any(b => AutomationProperties.GetName(b) == "Otwórz projekt O:/projects/deep-project")) throw new Exception("Project search should ignore case");
+                search.Text = "";
+                var compact = Descendants(projects).OfType<CheckBox>().Single(c => (string)c.Content == "Widok zwarty");
+                compact.IsChecked = true; await Task.Delay(60);
+                if (Descendants(projects).OfType<Expander>().Any()) throw new Exception("Compact project view retained composition panels");
+                Capture(projects, "visual-projects-compact");
+                compact.IsChecked = false;
+                var manyProjects = Enumerable.Range(0, 25).Select(i => new TokenEntry("Codex", "O:/projects/p" + i.ToString("D2"), "s" + i, "test-model", DateTimeOffset.Now.AddMinutes(-i), i + 1, 0, 0, 0, false)).ToList();
+                projects.UpdateDetails(currentAnalysis with { Entries = manyProjects }, SessionSnapshot.Empty); await Task.Delay(60);
+                List<Button> ProjectLinks() => Descendants(projects).OfType<Button>().Where(b => AutomationProperties.GetName(b).StartsWith("Otwórz projekt ")).ToList();
+                if (ProjectLinks().Count != 20) throw new Exception("Default project limit failed");
+                var limitChoice = Descendants(projects).OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "Liczba projektów");
+                limitChoice.SelectedIndex = 2; await Task.Delay(60);
+                if (ProjectLinks().Count != 25) throw new Exception("Show all projects failed");
+                var sortChoice = Descendants(projects).OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "Sortowanie projektów");
+                if (!AutomationProperties.GetName(ProjectLinks()[0]).EndsWith("p24")) throw new Exception("Token sorting failed");
+                sortChoice.SelectedIndex = 1; await Task.Delay(60);
+                if (!AutomationProperties.GetName(ProjectLinks()[0]).EndsWith("p00")) throw new Exception("Recent activity sorting failed");
+                sortChoice.SelectedIndex = 2; await Task.Delay(60);
+                if (!AutomationProperties.GetName(ProjectLinks()[0]).EndsWith("p00")) throw new Exception("Name sorting failed");
+                limitChoice.SelectedIndex = 0; sortChoice.SelectedIndex = 0;
+                projects.UpdateDetails(currentAnalysis with { Entries = drillRows }, SessionSnapshot.Empty); await Task.Delay(60);
                 var projectLink = Descendants(projects).OfType<Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Otwórz projekt O:/projects/deep-project");
                 projectLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(80);
                 var rankTexts = Descendants(projects).OfType<TextBlock>().Select(t => t.Text).ToList();
@@ -287,7 +319,7 @@ public static class VisualVerification
                 await Task.Delay(80);
                 if (L.Language != "en") throw new Exception("Tray language option did not work");
                 selected.Close();
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 34, LiveLanguageSelection = true, EnglishAndPolish = true, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 35, StatisticsFilters = true, ProjectSearch = true, ProjectSorting = true, ProjectLimits = true, CompactProjects = true, LiveLanguageSelection = true, EnglishAndPolish = true, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }
