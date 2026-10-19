@@ -34,9 +34,9 @@ The widget's quota checks do not send model prompts or start AI tasks.
 
 ## Install with Codex
 
-**Let Codex handle the setup on your Windows PC.** Open the prompt below, fill in
-the repository link and your tools (for example `Codex, Claude Code`), and paste it
-into Codex. Leave the tools field empty to detect installed clients.
+**Let Codex handle the setup on your Windows PC.** Open the prompt below, enter
+your tools (for example `Codex, Claude Code`), and paste it into Codex. The repository
+link is already filled in. Leave the tools field empty to detect installed clients.
 
 Codex is instructed to find paths and prerequisites itself, ask only when something
 necessary is missing, and continue after you complete any required account login.
@@ -48,7 +48,7 @@ necessary is missing, and continue after you complete any required account login
 Set up AI Usage Widget on this computer and carry the work through to a working,
 verified installation. Respond in the language I use.
 
-Repository: [PASTE THE GITHUB REPOSITORY LINK HERE]
+Repository: https://github.com/morfidon/ai-usage-widget
 AI tools I use: [ENTER YOUR TOOLS, e.g. Codex, Claude Code; OR LEAVE EMPTY TO DETECT]
 
 Read the repository's AGENTS.md, README and relevant setup documentation first.
@@ -102,12 +102,17 @@ later. You do not need subscriptions to all five services.
 
 ## Quick start
 
-Prefer to run the setup yourself? Clone or extract this repository, open **64-bit
-Windows PowerShell 5.1 or PowerShell 7** in that folder, and run:
+Prefer to run the setup yourself? With Git installed, open **64-bit Windows
+PowerShell 5.1 or PowerShell 7** and run:
 
 ```powershell
+git clone https://github.com/morfidon/ai-usage-widget.git
+cd ai-usage-widget
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -InstallPrerequisites
 ```
+
+You can also download the repository ZIP, extract it, and run only the setup
+command from that folder.
 
 Setup detects clients, obtains the verified per-user .NET prerequisites if needed,
 builds, tests, installs and opens the widget. No administrator access is needed.
