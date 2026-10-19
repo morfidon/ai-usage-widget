@@ -69,7 +69,7 @@ public static class ReadmeMedia
         using (var dc = visual.RenderOpen()) {
             dc.DrawRectangle(Background, null, new Rect(0, 0, 940, 720));
             Label(dc, "AI USAGE WIDGET", 36, 25, 15, Ink, true);
-            Label(dc, "Sample data  /  Polish UI", 684, 27, 12, Muted);
+            Label(dc, "Sample data  /  English UI", 684, 27, 12, Muted);
             if (stage < 2) {
                 double scale = Math.Min(1, 615 / viewHeight);
                 dc.DrawImage(snapshot, new Rect(26, 79, viewWidth * scale, viewHeight * scale));
@@ -90,7 +90,7 @@ public static class ReadmeMedia
         if (number == 0) Save(canvas, "overview.png");
     }
     static void Toggle(MainWindow window, string name, bool enabled) {
-        var providers = window.ContextMenu.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == "Dostawcy");
+        var providers = window.ContextMenu.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == "Providers");
         var choice = providers.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == name);
         choice.IsChecked = enabled; choice.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
     }
@@ -99,7 +99,7 @@ public static class ReadmeMedia
         output = Path.GetFullPath(args[0]); Directory.CreateDirectory(Path.Combine(output, "frames"));
         Directory.CreateDirectory(Settings.DataDirectory);
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var main = new MainWindow(new Settings { Compact = true, Topmost = false, AnimateMascots = true,
+        var main = new MainWindow(new Settings { Language = "en", Compact = true, Topmost = false, AnimateMascots = true,
             EnabledProviders = new[] { "Codex", "Claude" }, Left = 20, Top = 20 }, preview: true);
         int exit = 0;
         main.Loaded += async (_, _) => {
@@ -110,7 +110,7 @@ public static class ReadmeMedia
                 Toggle(main, "Claude", false); await Task.Delay(100);
                 Save(Snapshot(main), "one-provider.png");
                 for (int frame = 24; frame < 42; frame++) { Frame(main, frame, 1); await Task.Delay(12); }
-                var history = Children(main).OfType<Button>().Single(b => AutomationProperties.GetHelpText(b) == "Historia limitów i szczegóły");
+                var history = Children(main).OfType<Button>().Single(b => AutomationProperties.GetHelpText(b) == "Quota history and details");
                 history.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(100);
                 var details = Application.Current.Windows.OfType<InsightsWindow>().Single(w => ReferenceEquals(w.Owner, main));
                 details.Width = 820; details.Height = 550;

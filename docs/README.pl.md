@@ -8,6 +8,7 @@ Natywny widget Windows pokazujący jednocześnie pozostałe limity subskrypcji C
 
 ## Obsługa
 
+- Domyślny język to angielski. Aby przełączyć cały interfejs na polski, wybierz **••• → Language / Język → Polski**. Ta sama opcja jest w menu ikony przy zegarze. Zmiana działa od razu i jest zapamiętywana; poniższe nazwy opcji dotyczą polskiego interfejsu.
 - W menu **••• → Dostawcy** lub pod prawym przyciskiem ikony przy zegarze zaznacz konta, które chcesz widzieć. Zmiany działają od razu i są zapamiętywane. **Wybierz wykryte aplikacje** zastępuje wybór aplikacjami znalezionymi na tym komputerze. Chwilowy brak połączenia nie ukrywa zaznaczonej karty.
 - Uruchom **AI Usage Widget** z menu Start. `Uruchom widget.cmd` uruchamia lokalną wersję z `dist`, przeznaczoną do pracy nad kodem.
 - Przeciągnij nagłówek, aby przesunąć okno. Położenie i wybrany tryb są zapamiętywane.

@@ -4,6 +4,8 @@ The README media is exported from the **actual WPF application views**, using th
 same preview fixtures as UI verification. It does not capture the desktop or read
 real provider accounts, credentials, conversation history or personal project names.
 The visible sample names and quota values come from the repository's preview data.
+The exporter explicitly selects English, independent of the Windows language or
+the user's saved widget settings. Keep public screenshots and the GIF in English.
 
 ## Regenerate
 

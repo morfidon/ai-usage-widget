@@ -6,7 +6,7 @@ A small Windows tray widget for **Codex, Claude Code, Devin, JetBrains Air and
 Antigravity**. Keep only the accounts you use, see when their limits reset, and
 spot sessions waiting for your attention.
 
-**Windows 10/11 x64** · **.NET 9** · **[MIT](LICENSE)** · **Polish UI**
+**Windows 10/11 x64** · **.NET 9** · **[MIT](LICENSE)** · **English / Polski**
 
 [Install with Codex](#install-with-codex) · [Quick start](#quick-start) · [Providers](#supported-providers) · [Help](docs/TROUBLESHOOTING.md) · [Polski](docs/README.pl.md)
 
@@ -15,7 +15,7 @@ spot sessions waiting for your attention.
 <img src="docs/media/demo.gif" alt="Demo: Codex and Claude remaining limits, hiding Claude from the provider menu, then opening Codex quota history." width="940" height="720">
 
 *11 seconds. Real WPF views with sample data; no private accounts or conversations.
-The interface is currently Polish. [Prefer still images?](#screenshots)*
+English is the default; Polish is available in Options. [Prefer still images?](#screenshots)*
 
 ## What you get
 
@@ -120,8 +120,12 @@ For an explicit selection, append `-Providers "Codex,Claude"`; `-Providers None`
 starts with no cards. Autostart is off on a fresh install unless you enable it.
 
 **What happens next:** a ready account shows its limits. If login is needed, setup
-reports the exact action. Open **AI Usage Widget** from Start; use **••• → Dostawcy**
+reports the exact action. Open **AI Usage Widget** from Start; use **••• → Providers**
 to change accounts. Your choice is remembered.
+
+**Language:** English is the default. Choose **••• → Language / Język → Polski**
+to switch to Polish, or select **English** to switch back. The tray icon menu has
+the same option. The interface updates immediately and remembers your choice.
 
 Native Windows x64 is required; WSL, macOS, Linux, ARM64 and x86 are outside this
 setup path. Python, Node and FFmpeg are not required to build or run the widget.

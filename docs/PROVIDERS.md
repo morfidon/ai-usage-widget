@@ -4,13 +4,13 @@ You only need the providers you actually use. Select them with
 `setup.ps1 -Providers "Codex,Claude"`, for example. Missing unselected providers
 are reported as `not_selected`; they do not make setup fail.
 
-You can change the selection live in **••• → Dostawcy**, or by right-clicking the tray
-icon and opening **Dostawcy**. Uncheck any provider you do not want, regardless of
+You can change the selection live in **••• → Providers**, or by right-clicking the tray
+icon and opening **Providers**. Uncheck any provider you do not want, regardless of
 whether it is installed. Hidden providers stop quota/session reads and live transcript
 indexing; their saved quota history is retained. Any read already running is cancelled
 when the selection changes.
 
-**Wybierz wykryte aplikacje** replaces your current selection with detected native
+**Select detected apps** replaces your current selection with detected native
 clients; it does not check login or make account requests. Automatic selection runs
 only for a new configuration. Later launches keep your saved choices. Connection
 errors, expired logins and a closed Antigravity app do not silently hide selected cards.

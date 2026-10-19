@@ -5,8 +5,10 @@
 You need **native Windows 10/11 x64** and a writable checkout. A signed-in provider
 app is needed to show its limits; you can prepare the widget before installing any clients.
 Use 64-bit Windows PowerShell 5.1 or PowerShell 7. WSL/Linux/macOS,
-Windows ARM64 and x86 are outside the supported setup path. The widget UI is Polish;
-these setup instructions and the agent guide are English.
+Windows ARM64 and x86 are outside the supported setup path. The widget starts in
+English. Select **••• → Language / Język → Polski** for Polish; the choice applies
+immediately and is saved in `settings.json` as `Language` (`en` or `pl`). Existing
+settings without a language also default to English. Other settings are preserved.
 
 Clone this repository (or download and extract its ZIP), then open PowerShell in
 that directory. Git is needed only if you choose to clone it. Run:
@@ -39,7 +41,7 @@ your previous status line command. Autostart adds a current-user Windows Run ent
 Both options also accept `Disable`; the default is `Keep`. Provider selection controls
 quota polling, session monitoring and local transcript indexing. Later setup runs
 reuse saved provider selection unless you pass `-Providers` again. You can also change
-providers at any time in **••• → Dostawcy** or the tray icon menu, without restarting.
+providers at any time in **••• → Providers** or the tray icon menu, without restarting.
 Uncheck accounts you do not want to monitor, even when their apps are installed.
 The first standalone launch selects detected clients; existing saved choices are respected.
 A temporary connection/login problem keeps a selected card visible with its status.
