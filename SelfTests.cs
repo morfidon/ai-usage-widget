@@ -8,6 +8,7 @@ public static class SelfTests
 {
     public static int Run()
     {
+        L.SetLanguage("pl"); // Preserve the existing Polish regression expectations.
         int count = 0;
         void Check(bool condition, string name) { if (!condition) throw new Exception("FAILED: " + name); Console.WriteLine("PASS " + name); count++; }
         JsonElement Parse(string json) { using var d = JsonDocument.Parse(json); return d.RootElement.Clone(); }
@@ -136,6 +137,7 @@ public static class SelfTests
             && !AntigravityProvider.IsLocalQuotaUri(new Uri("https://user@127.0.0.1:1234" + agRpc))
             && !AntigravityProvider.IsLocalQuotaUri(new Uri("https://127.0.0.1:1234" + agRpc + "?redirect=1")), "Antigravity TLS exception is restricted to loopback quota RPCs");
         count += FeatureTests.Run();
+        count += LocalizationTests.Run();
         Console.WriteLine($"{count} tests passed."); return 0;
     }
 }

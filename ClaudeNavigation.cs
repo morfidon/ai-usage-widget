@@ -14,7 +14,7 @@ public static class ClaudeNavigation
     public static string? Open(string id)
     {
         var uri = ThreadUri(id);
-        if (uri is null) return "Brak poprawnego ID rozmowy Claude. Możesz skopiować identyfikator sesji.";
+        if (uri is null) return L.T("Brak poprawnego ID rozmowy Claude. Możesz skopiować identyfikator sesji.");
         try
         {
             using var process = Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
@@ -22,7 +22,7 @@ public static class ClaudeNavigation
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException)
         {
-            return "Nie udało się otworzyć Claude Desktop. Uruchom aplikację i spróbuj ponownie lub skopiuj ID sesji.";
+            return L.T("Nie udało się otworzyć Claude Desktop. Uruchom aplikację i spróbuj ponownie lub skopiuj ID sesji.");
         }
     }
 }

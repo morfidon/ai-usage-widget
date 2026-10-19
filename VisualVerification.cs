@@ -32,7 +32,7 @@ public static class VisualVerification
     public static int Run()
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var main = new MainWindow(new Settings { Compact = true, Topmost = false, Left = 20, Top = 20 }, true);
+        var main = new MainWindow(new Settings { Language = "pl", Compact = true, Topmost = false, Left = 20, Top = 20 }, true);
         int result = 0;
         main.Loaded += async (_, _) =>
         {
@@ -210,7 +210,7 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                var selected = new MainWindow(new Settings { Compact = true, Topmost = false, EnabledProviders = new[] { "Codex" } }, true);
+                var selected = new MainWindow(new Settings { Language = "pl", Compact = true, Topmost = false, EnabledProviders = new[] { "Codex" } }, true);
                 selected.Show(); await Task.Delay(100);
                 var selectedText = Descendants(selected).OfType<TextBlock>().Select(t => t.Text).ToArray();
                 if (!selectedText.Contains("Codex") || selectedText.Any(t => t is "Claude" or "Devin" or "JetBrains Air" or "Antigravity"))
@@ -245,8 +245,43 @@ public static class VisualVerification
                 var trayClaude = trayChoices.DropDownItems.OfType<System.Windows.Forms.ToolStripMenuItem>().Single(i => i.Text == "Claude");
                 trayClaude.Checked = true; trayClaude.PerformClick(); await Task.Delay(80);
                 if (Descendants(selected).OfType<TextBlock>().Any(t => t.Text == "Claude")) throw new Exception("Tray provider toggle does not hide its card");
+                // Exercise the actual language options, including an already-open
+                // details window and both directions of cached quota translation.
+                MenuItem LanguageChoice(string label) => selected.ContextMenu.Items.OfType<MenuItem>()
+                    .Single(i => i.Header?.ToString()?.Contains("Language") == true).Items.OfType<MenuItem>()
+                    .Single(i => i.Header?.ToString() == label);
+                LanguageChoice("English").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                await Task.Delay(80);
+                if (L.Language != "en" || !Descendants(selected).OfType<TextBlock>().Any(t => t.Text == "Remaining")
+                    || !selected.ContextMenu.Items.OfType<MenuItem>().Any(i => i.Header?.ToString() == "Refresh limits"))
+                    throw new Exception("English language option did not translate the current view");
+                if (!selectedTray.ContextMenuStrip!.Items.OfType<System.Windows.Forms.ToolStripMenuItem>().Any(i => i.Text == "Providers"))
+                    throw new Exception("Tray menu was not translated");
+                Capture(selected, "visual-english-compact");
+                selected.SetCompactForTest(false); await Task.Delay(80); Capture(selected, "visual-english-full");
+                var englishDetails = selected.InsightsForTest(0); await Task.Delay(80);
+                var englishTabs = Descendants(englishDetails).OfType<TabControl>().Single();
+                if (!englishTabs.Items.OfType<TabItem>().Select(t => t.Header?.ToString())
+                    .SequenceEqual(new[] { "Overview", "Limits", "Projects", "Models and tokens", "Sessions" }))
+                    throw new Exception("English details tabs are incomplete");
+                for (int tab = 0; tab < 5; tab++) {
+                    englishTabs.SelectedIndex = tab; await Task.Delay(80);
+                    Capture(englishDetails, "visual-english-details-" + tab);
+                }
+                LanguageChoice("Polski").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                await Task.Delay(80);
+                if (L.Language != "pl" || !Descendants(selected).OfType<TextBlock>().Any(t => t.Text == "pozostało")
+                    || !selected.ContextMenu.Items.OfType<MenuItem>().Any(i => i.Header?.ToString() == "Dostawcy"))
+                    throw new Exception("Switching back to Polish left English views");
+                if (!Application.Current!.Windows.OfType<InsightsWindow>().Any(w => ReferenceEquals(w.Owner, selected)))
+                    throw new Exception("Open details window was lost during language change");
+                var polishTrayLanguage = selectedTray.ContextMenuStrip!.Items.OfType<System.Windows.Forms.ToolStripMenuItem>()
+                    .Single(i => i.Text?.Contains("Language") == true);
+                polishTrayLanguage.DropDownItems.OfType<System.Windows.Forms.ToolStripMenuItem>().Single(i => i.Text == "English").PerformClick();
+                await Task.Delay(80);
+                if (L.Language != "en") throw new Exception("Tray language option did not work");
                 selected.Close();
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 27, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 34, LiveLanguageSelection = true, EnglishAndPolish = true, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

@@ -29,11 +29,11 @@ public static class AntigravityUsageParser
             if (members.Count == 0) continue;
             // Legacy endpoints expose the session limit only. Never invent the weekly one.
             var tightest = members.OrderByDescending(w => w.Used).ThenBy(w => w.ResetAt ?? long.MaxValue).First();
-            pools.Add(tightest with { Id = "quota:" + prefix + "-5h", Label = "5 godzin", Minutes = 300, Group = group,
-                DetailText = "Wspólna pula: " + string.Join(", ", members.Select(w => w.Label)) });
+            pools.Add(tightest with { Id = "quota:" + prefix + "-5h", Label = L.T("5 godzin"), Minutes = 300, Group = group,
+                DetailText = L.T("Wspólna pula: ") + string.Join(", ", members.Select(w => w.Label)) });
         }
-        return models with { Windows = pools, Status = "Odczyt zastępczy · limity 5-godzinne",
-            Error = "Brak odczytu limitów tygodniowych" };
+        return models with { Windows = pools, Status = L.T("Odczyt zastępczy · limity 5-godzinne"),
+            Error = L.T("Brak odczytu limitów tygodniowych") };
     }
     internal static string Plan(JsonElement root)
     {
@@ -59,7 +59,7 @@ public static class AntigravityUsageParser
             string description = UsageParser.Text(group, "description") ?? "";
             const string modelPrefix = "Models within this group: ";
             string detail = description.StartsWith(modelPrefix, StringComparison.OrdinalIgnoreCase)
-                ? "Wspólna pula: " + description.Substring(modelPrefix.Length) : description;
+                ? L.T("Wspólna pula: ") + description.Substring(modelPrefix.Length) : description;
             foreach (var bucket in buckets.EnumerateArray())
             {
                 if (bucket.ValueKind != JsonValueKind.Object || (bucket.TryGetProperty("disabled", out var disabled) && disabled.ValueKind == JsonValueKind.True)) continue;
@@ -68,7 +68,7 @@ public static class AntigravityUsageParser
                 // Argon has its own weekly allowance; do not merge it into Gemini or
                 // synthesize a five-hour meter from the legacy per-model response.
                 if (groupName == "Gemini 4 Argon" && cadence != "weekly") continue;
-                string? label = cadence switch { "weekly" => "Tydzień", "5h" => "5 godzin", _ => UsageParser.Text(bucket, "displayName") };
+                string? label = cadence switch { "weekly" => L.T("Tydzień"), "5h" => L.T("5 godzin"), _ => UsageParser.Text(bucket, "displayName") };
                 if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(label)) continue;
                 double? remaining = AdditionalUsageParser.Numeric(bucket, "remainingFraction");
                 long? reset = UsageParser.Timestamp(bucket, "resetTime");
@@ -82,7 +82,7 @@ public static class AntigravityUsageParser
         windows = windows.OrderBy(w => w.Group == "Gemini" ? 0 : w.Group == "Claude / GPT" ? 1 : 2)
             .ThenBy(w => w.Group, StringComparer.Ordinal).ThenBy(w => w.Minutes == 10080 ? 0 : 1).ThenBy(w => w.Id, StringComparer.Ordinal).ToList();
         return new("Antigravity", "", windows, DateTimeOffset.Now,
-            windows.Count > 0 ? "Połączono · wspólne pule modeli" : "Konto nie udostępnia limitów", true);
+            windows.Count > 0 ? L.T("Połączono · wspólne pule modeli") : L.T("Konto nie udostępnia limitów"), true);
     }
     static ProviderState ParseModels(JsonElement root)
     {
@@ -117,7 +117,7 @@ public static class AntigravityUsageParser
             windows.Add(new("model:" + id, label, 100 - remaining.Value * 100, reset, 0));
         }
         return new("Antigravity", plan, windows, DateTimeOffset.Now,
-            windows.Count > 0 ? "Połączono · limity modeli Antigravity" : "Konto nie udostępnia limitów modeli", true);
+            windows.Count > 0 ? L.T("Połączono · limity modeli Antigravity") : L.T("Konto nie udostępnia limitów modeli"), true);
     }
 }
 
@@ -247,7 +247,7 @@ public sealed class AntigravityProvider : IDisposable
             if (last is not null && DateTimeOffset.UtcNow < nextRead) return last;
             nextRead = DateTimeOffset.UtcNow.AddMinutes(2);
             var endpoints = await Task.Run(() => AntigravityEndpoint.Find(timeout.Token), timeout.Token);
-            if (endpoints.Count == 0) return last = ProviderState.Empty("Antigravity") with { Status = "Uruchom Antigravity i zaloguj się na konto Google", SetupStatus = "app_required" };
+            if (endpoints.Count == 0) return last = ProviderState.Empty("Antigravity") with { Status = L.T("Uruchom Antigravity i zaloguj się na konto Google"), SetupStatus = "app_required" };
             foreach (var endpoint in endpoints)
                 foreach (int port in endpoint.Ports)
                     foreach (string scheme in new[] { "https", "http" })
@@ -265,7 +265,7 @@ public sealed class AntigravityProvider : IDisposable
                                     : "{\"metadata\":{\"ideName\":\"antigravity\",\"extensionName\":\"antigravity\",\"locale\":\"en\"}}", Encoding.UTF8, "application/json");
                                 using var response = await http.SendAsync(request, timeout.Token);
                                 if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                                { nextRead = DateTimeOffset.UtcNow.AddMinutes(10); return Failure("Antigravity ograniczył odczyty · ponowię połączenie"); }
+                                { nextRead = DateTimeOffset.UtcNow.AddMinutes(10); return Failure(L.T("Antigravity ograniczył odczyty · ponowię połączenie")); }
                                 if (!response.IsSuccessStatusCode) continue;
                                 using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
                                 var parsed = AntigravityUsageParser.Parse(document.RootElement);
@@ -294,10 +294,10 @@ public sealed class AntigravityProvider : IDisposable
                             catch (OperationCanceledException) when (timeout.IsCancellationRequested) { throw; }
                             catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException or InvalidDataException) { }
                         }
-            return Failure("Brak odczytu Antigravity · sprawdź logowanie w aplikacji");
+            return Failure(L.T("Brak odczytu Antigravity · sprawdź logowanie w aplikacji"));
         }
         catch (OperationCanceledException) when (outer.IsCancellationRequested) { throw; }
-        catch { return Failure("Brak odczytu Antigravity · ponowię połączenie"); }
+        catch { return Failure(L.T("Brak odczytu Antigravity · ponowię połączenie")); }
         finally { gate.Release(); }
     }
     ProviderState Failure(string status) => last = ProviderState.Empty("Antigravity") with { Status = status };

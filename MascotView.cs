@@ -54,8 +54,8 @@ public sealed class MascotView : FrameworkElement
         else timer.Stop();
     }
     public static string Label(MascotState state) => state switch
-    { MascotState.Sleeping => "Odpoczywa", MascotState.Idle => "Gotowy", MascotState.Working => "Pracuje", MascotState.Waiting => "Czeka na Ciebie",
-        MascotState.Finished => "Zadanie zakończone", MascotState.Low => "Mało limitu", MascotState.Exhausted => "Limit wyczerpany", _ => "Brak aktualnych danych" };
+    { MascotState.Sleeping => L.T("Odpoczywa"), MascotState.Idle => L.T("Gotowy"), MascotState.Working => L.T("Pracuje"), MascotState.Waiting => L.T("Czeka na Ciebie"),
+        MascotState.Finished => L.T("Zadanie zakończone"), MascotState.Low => L.T("Mało limitu"), MascotState.Exhausted => L.T("Limit wyczerpany"), _ => L.T("Brak aktualnych danych") };
     public static MascotState Choose(ProviderState provider, SessionSnapshot sessions, bool finished = false)
     {
         var active = sessions.Sessions.Where(s => s.Provider == provider.Name).ToList();

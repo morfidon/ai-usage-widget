@@ -28,7 +28,7 @@ public class FixtureCodex {
 }
 '@
 $settingsPath = Join-Path $fixture 'data/settings.json'
-[IO.File]::WriteAllText($settingsPath, (@{ CodexPath = $serverPath; Compact = $true; EnabledProviders = @('Codex') } | ConvertTo-Json))
+[IO.File]::WriteAllText($settingsPath, (@{ CodexPath = $serverPath; Language = 'pl'; Compact = $true; EnabledProviders = @('Codex') } | ConvertTo-Json))
 $options = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'setup.ps1'),
     '-Providers','Codex','-NoLaunch','-SkipLegacyMigration','-BuildDirectory',$BuildDirectory,
     '-InstallDirectory',(Join-Path $fixture 'app'),'-DataDirectory',(Join-Path $fixture 'data'),
@@ -39,7 +39,7 @@ $result = Get-Content -LiteralPath (Join-Path $fixture 'data/setup-result.json')
 if (-not $result.Installed -or -not $result.LaunchSkipped -or $result.WindowVerified -or $result.ExitCode -ne 0 -or
     ($result.Checks | Where-Object { $_.Provider -eq 'Codex' }).Status -ne 'ready') { throw 'Incorrect setup result.' }
 $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-if (-not $settings.Compact -or $settings.CodexPath -ne $serverPath -or $settings.EnabledProviders.Count -ne 1) { throw 'Setup lost existing preferences.' }
+if (-not $settings.Compact -or $settings.Language -ne 'pl' -or $settings.CodexPath -ne $serverPath -or $settings.EnabledProviders.Count -ne 1) { throw 'Setup lost existing preferences, including language.' }
 # Omit explicit providers on repeat to verify that saved selection is reused.
 $repeatOptions = @(); $providerOption = [Array]::IndexOf($options, '-Providers')
 for ($i = 0; $i -lt $options.Count; $i++) { if ($i -ne $providerOption -and $i -ne ($providerOption + 1)) { $repeatOptions += $options[$i] } }

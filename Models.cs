@@ -13,7 +13,7 @@ public sealed record UsageWindow(string Id, string Label, double Used, long? Res
     public double Remaining => Math.Clamp(100 - Used, 0, 100);
     public bool Expired => ResetAt is long r && r <= DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     public string ResetText => Renews ? ResetFormatter.Format(ResetAt, DateTimeOffset.Now, TimeZoneInfo.Local).Detail
-        : "Bez resetu miesięcznego · ważność dodatkowych kredytów sprawdzisz na koncie JetBrains";
+        : L.T("Bez resetu miesięcznego · ważność dodatkowych kredytów sprawdzisz na koncie JetBrains");
 }
 
 public sealed record ResetPresentation(string Countdown, string Calendar, string ShortCalendar)
@@ -23,35 +23,35 @@ public sealed record ResetPresentation(string Countdown, string Calendar, string
 
 public static class ResetFormatter
 {
-    static readonly CultureInfo Polish = CultureInfo.GetCultureInfo("pl-PL");
     public static ResetPresentation Format(long? resetAt, DateTimeOffset now, TimeZoneInfo zone)
     {
-        if (resetAt is not long seconds) return new("Brak czasu resetu", "", "");
+        if (resetAt is not long seconds) return new(L.T("Brak czasu resetu"), "", "");
         var instant = DateTimeOffset.FromUnixTimeSeconds(seconds);
         var span = instant - now;
-        if (span <= TimeSpan.Zero) return new("Reset minął · czekam na dane", "", "");
+        if (span <= TimeSpan.Zero) return new(L.T("Reset minął · czekam na dane"), "", "");
         var local = TimeZoneInfo.ConvertTime(instant, zone);
         var today = TimeZoneInfo.ConvertTime(now, zone).Date;
         int dayDifference = (local.Date - today).Days;
-        string weekday = Polish.TextInfo.ToTitleCase(local.ToString("dddd", Polish));
-        string day = dayDifference switch { 0 => "Dzisiaj", 1 => "Jutro", _ => weekday };
-        string date = local.ToString(local.Year == today.Year ? "d MMMM" : "d MMMM yyyy", Polish);
-        string time = local.ToString("HH:mm", Polish);
-        string shortDay = dayDifference < 7 ? day : local.ToString(local.Year == today.Year ? "d MMM" : "dd.MM.yyyy", Polish);
+        var culture = L.Culture;
+        string weekday = culture.TextInfo.ToTitleCase(local.ToString("dddd", culture));
+        string day = dayDifference switch { 0 => L.T("Dzisiaj"), 1 => L.T("Jutro"), _ => weekday };
+        string date = local.ToString(local.Year == today.Year ? "d MMMM" : "d MMMM yyyy", culture);
+        string time = local.ToString("HH:mm", culture);
+        string shortDay = dayDifference < 7 ? day : local.ToString(local.Year == today.Year ? "d MMM" : "dd.MM.yyyy", culture);
         long minutes = (long)Math.Ceiling(span.TotalMinutes);
         long days = minutes / 1440, hours = minutes / 60 % 24, mins = minutes % 60;
         string remaining = span.TotalMinutes < 1 ? "<1 min"
-            : days > 0 ? $"{days} {(days == 1 ? "dzień" : "dni")}" + (hours > 0 ? $" {hours} godz." : "")
-            : hours > 0 ? $"{hours} godz." + (mins > 0 ? $" {mins} min" : "")
+            : days > 0 ? $"{days} {(days == 1 ? L.T("dzień") : L.T("dni"))}" + (hours > 0 ? L.F(" {0} godz.", hours) : "")
+            : hours > 0 ? L.F("{0} godz.", hours) + (mins > 0 ? $" {mins} min" : "")
             : $"{mins} min";
-        return new("Reset za " + remaining, $"{day}, {date} · {time}", $"{shortDay} · {time}");
+        return new(L.T("Reset za ") + remaining, $"{day}, {date} · {time}", $"{shortDay} · {time}");
     }
 }
 
 public sealed record ProviderState(string Name, string Plan, List<UsageWindow> Windows, DateTimeOffset? Updated,
     string Status, bool Connected, string? Error = null)
 {
-    public static ProviderState Empty(string name) => new(name, "", new(), null, "Łączenie…", false);
+    public static ProviderState Empty(string name) => new(name, "", new(), null, L.T("Łączenie…"), false);
     public string? SetupStatus { get; init; }
 }
 
@@ -84,7 +84,7 @@ public static class UsageParser
         {
             if (Object(bucket, key) is not JsonElement w || Number(w, "usedPercent") is not double used) continue;
             int minutes = (int)(Number(w, "windowDurationMins") ?? 0);
-            string duration = minutes switch { 300 => "5 godzin", 10080 => "Tydzień", > 0 and < 60 => $"{minutes} min", >= 60 and < 1440 => $"{minutes / 60.0:0.#} godz.", >= 1440 => $"{minutes / 1440.0:0.#} dni", _ => key == "primary" ? "Limit główny" : "Limit dodatkowy" };
+            string duration = minutes switch { 300 => L.T("5 godzin"), 10080 => L.T("Tydzień"), > 0 and < 60 => $"{minutes} min", >= 60 and < 1440 => L.F("{0:0.#} godz.", minutes / 60.0), >= 1440 => L.F("{0:0.#} dni", minutes / 1440.0), _ => key == "primary" ? L.T("Limit główny") : L.T("Limit dodatkowy") };
             string prefix = id == "codex" ? "" : (Text(bucket, "limitName") ?? id) + " · ";
             list.Add(new(id + ":" + key, prefix + duration, Math.Clamp(used, 0, 100), Timestamp(w, "resetsAt"), minutes));
         }
@@ -93,8 +93,8 @@ public static class UsageParser
     {
         var list = new List<UsageWindow>();
         JsonElement source = bridge ? Object(root, "rate_limits") ?? root : root;
-        foreach (var item in new[] { ("five_hour", "5 godzin", 300), ("seven_day", "Tydzień", 10080),
-            ("seven_day_opus", "Tydzień · Opus", 10080), ("seven_day_sonnet", "Tydzień · Sonnet", 10080), ("spend_limit", "Limit wydatków", 0) })
+        foreach (var item in new[] { ("five_hour", L.T("5 godzin"), 300), ("seven_day", L.T("Tydzień"), 10080),
+            ("seven_day_opus", L.T("Tydzień · Opus"), 10080), ("seven_day_sonnet", L.T("Tydzień · Sonnet"), 10080), ("spend_limit", L.T("Limit wydatków"), 0) })
         {
             if (Object(source, item.Item1) is not JsonElement w) continue;
             var used = Number(w, bridge ? "used_percentage" : "utilization");
@@ -108,9 +108,9 @@ public static class UsageParser
                     string? kind = Text(meter, "kind");
                     var used = Number(meter, "percent");
                     if (kind is null || !used.HasValue) continue;
-                    string label = kind switch { "session" => "5 godzin", "weekly_all" => "Tydzień", _ => "Tydzień · model" };
+                    string label = kind switch { "session" => L.T("5 godzin"), "weekly_all" => L.T("Tydzień"), _ => L.T("Tydzień · model") };
                     if (Object(meter, "scope") is JsonElement scope && Object(scope, "model") is JsonElement model)
-                        label = "Tydzień · " + (Text(model, "display_name") ?? Text(model, "id") ?? "model");
+                        label = L.T("Tydzień · ") + (Text(model, "display_name") ?? Text(model, "id") ?? "model");
                     list.Add(new(kind + ":" + list.Count, label, Math.Clamp(used.Value, 0, 100), Timestamp(meter, "resets_at"), kind == "session" ? 300 : 10080));
                 }
         return list;
@@ -119,6 +119,7 @@ public static class UsageParser
 
 public sealed class Settings
 {
+    public string Language { get; set; } = "en";
     public double? Left { get; set; }
     public double? Top { get; set; }
     public bool Compact { get; set; }
@@ -178,7 +179,7 @@ public static class TrayFormatter
             return state.Name + ": " + (detail.Length > 0 ? detail : "?");
         }
         var enabled = new[] { codex, claude }.Where(s => settings?.IsEnabled(s.Name) != false).ToArray();
-        string value = enabled.Length == 0 ? "AI Usage Widget" : "Wolne · " + string.Join(" | ", enabled.Select(Summary));
+        string value = enabled.Length == 0 ? "AI Usage Widget" : L.T("Wolne · ") + string.Join(" | ", enabled.Select(Summary));
         return value[..Math.Min(63, value.Length)];
     }
 }

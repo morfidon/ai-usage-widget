@@ -79,6 +79,8 @@ public sealed class MainWindow : Window
     {
         this.settings = settings;
         this.preview = preview;
+        settings.Language = L.Normalize(settings.Language);
+        L.SetLanguage(settings.Language);
         WidgetTheme.Apply(this);
         history = new(preview ? Path.Combine(Settings.DataDirectory, "visual-test-history.json") : null);
         sessionMonitor = new(settings); analytics = new(settings);
@@ -105,39 +107,7 @@ public sealed class MainWindow : Window
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
         tray = new Forms.NotifyIcon { Icon = CreateIcon(), Text = Title, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Dispatcher.BeginInvoke(() => { if (IsVisible) Hide(); else Restore(); }); };
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Pokaż widget", null, (_, _) => Dispatcher.BeginInvoke(Restore));
-        menu.Items.Add("Odśwież limity", null, (_, _) => Dispatcher.BeginInvoke(() => _ = Refresh()));
-        menu.Items.Add("Tryb kompaktowy / pełny", null, (_, _) => Dispatcher.BeginInvoke(ToggleCompact));
-        menu.Items.Add("Historia i szczegóły", null, (_, _) => Dispatcher.BeginInvoke(OpenInsights));
-        var providerChoices = new Forms.ToolStripMenuItem("Dostawcy");
-        foreach (string name in SetupDiagnostics.Providers) {
-            var choice = new Forms.ToolStripMenuItem(name) { CheckOnClick = true, Checked = settings.IsEnabled(name), Tag = name };
-            choice.Click += (_, _) => Dispatcher.BeginInvoke(() => SetProviderEnabled(name, choice.Checked));
-            providerChoices.DropDownItems.Add(choice);
-        }
-        providerChoices.DropDownItems.Add(new Forms.ToolStripSeparator());
-        providerChoices.DropDownItems.Add("Wybierz wykryte aplikacje", null, (_, _) => Dispatcher.BeginInvoke(() => ApplyProviderSelection(ProviderDiscovery.Detect(settings))));
-        menu.Items.Add(providerChoices);
-        var trayProvider = new Forms.ToolStripMenuItem("Procent przy zegarze");
-        foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
-            trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
-        menu.Items.Add(trayProvider);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        var startup = new Forms.ToolStripMenuItem("Uruchamiaj z Windows") { CheckOnClick = true, Checked = Startup.Enabled };
-        startup.Click += (_, _) => { try { Startup.Set(startup.Checked); } catch { startup.Checked = Startup.Enabled; } };
-        menu.Items.Add(startup);
-        menu.Items.Add("Zakończ", null, (_, _) => Dispatcher.BeginInvoke(Close));
-        menu.Opening += (_, _) => {
-            startup.Checked = Startup.Enabled;
-            foreach (var item in providerChoices.DropDownItems.OfType<Forms.ToolStripMenuItem>())
-                if (item.Tag is string name) item.Checked = settings.IsEnabled(name);
-            trayProvider.DropDownItems.Clear();
-            foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
-                trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
-            trayProvider.Visible = trayProvider.DropDownItems.Count > 0;
-        };
-        tray.ContextMenuStrip = menu;
+        tray.ContextMenuStrip = BuildTrayMenu();
         if (preview) SetPreviewData(); else LoadCache();
         Render();
         Loaded += async (_, _) =>
@@ -160,6 +130,49 @@ public sealed class MainWindow : Window
             healthMonitor.Dispose(); codex.Dispose(); claude.Dispose(); devin.Dispose(); air.Dispose(); antigravity.Dispose();
         };
     }
+    Forms.ContextMenuStrip BuildTrayMenu()
+    {
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add(L.T("Pokaż widget"), null, (_, _) => Dispatcher.BeginInvoke(Restore));
+        menu.Items.Add(L.T("Odśwież limity"), null, (_, _) => Dispatcher.BeginInvoke(() => _ = Refresh()));
+        menu.Items.Add(L.T("Tryb kompaktowy / pełny"), null, (_, _) => Dispatcher.BeginInvoke(ToggleCompact));
+        menu.Items.Add(L.T("Historia i szczegóły"), null, (_, _) => Dispatcher.BeginInvoke(OpenInsights));
+        var providerChoices = new Forms.ToolStripMenuItem(L.T("Dostawcy"));
+        foreach (string name in SetupDiagnostics.Providers) {
+            var choice = new Forms.ToolStripMenuItem(name) { CheckOnClick = true, Checked = settings.IsEnabled(name), Tag = name };
+            choice.Click += (_, _) => Dispatcher.BeginInvoke(() => SetProviderEnabled(name, choice.Checked));
+            providerChoices.DropDownItems.Add(choice);
+        }
+        providerChoices.DropDownItems.Add(new Forms.ToolStripSeparator());
+        providerChoices.DropDownItems.Add(L.T("Wybierz wykryte aplikacje"), null, (_, _) => Dispatcher.BeginInvoke(() => ApplyProviderSelection(ProviderDiscovery.Detect(settings))));
+        menu.Items.Add(providerChoices);
+        var language = new Forms.ToolStripMenuItem(L.IsPolish ? "Język / Language" : "Language / Język");
+        foreach (var (code, label) in new[] { ("en", "English"), ("pl", "Polski") }) {
+            var choice = new Forms.ToolStripMenuItem(label) { Checked = settings.Language == code };
+            choice.Click += (_, _) => Dispatcher.BeginInvoke(() => SetLanguage(code));
+            language.DropDownItems.Add(choice);
+        }
+        menu.Items.Add(language);
+        var trayProvider = new Forms.ToolStripMenuItem(L.T("Procent przy zegarze"));
+        foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
+            trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
+        menu.Items.Add(trayProvider);
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        var startup = new Forms.ToolStripMenuItem(L.T("Uruchamiaj z Windows")) { CheckOnClick = true, Checked = Startup.Enabled };
+        startup.Click += (_, _) => { try { Startup.Set(startup.Checked); } catch { startup.Checked = Startup.Enabled; } };
+        menu.Items.Add(startup);
+        menu.Items.Add(L.T("Zakończ"), null, (_, _) => Dispatcher.BeginInvoke(Close));
+        menu.Opening += (_, _) => {
+            startup.Checked = Startup.Enabled;
+            foreach (var item in providerChoices.DropDownItems.OfType<Forms.ToolStripMenuItem>())
+                if (item.Tag is string name) item.Checked = settings.IsEnabled(name);
+            trayProvider.DropDownItems.Clear();
+            foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
+                trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
+            trayProvider.Visible = trayProvider.DropDownItems.Count > 0;
+        };
+        return menu;
+    }
     static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;
     static TextBlock Text(string value, double size = 12, Brush? color = null, FontWeight? weight = null) => new()
     { Text = value, FontSize = size, Foreground = color ?? ForegroundBrush, FontWeight = weight ?? FontWeights.Normal };
@@ -167,14 +180,14 @@ public sealed class MainWindow : Window
     static Brush QuotaColor(UsageWindow window, bool stale) => window.Expired || stale ? Muted
         : window.Remaining <= 10 ? Brush("#F18C99") : window.Remaining <= 20 ? Brush("#EAC06C") : ForegroundBrush;
     static string UpdatedText(ProviderState state) => state.Updated.HasValue
-        ? state.Updated.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm:ss") : "Brak odczytu";
+        ? state.Updated.Value.LocalDateTime.ToString(L.TimestampPattern, L.Culture) : L.T("Brak odczytu");
     static string QuotaDetail(UsageWindow window, ProviderState state) =>
-        (window.Expired ? "Czekam na odczyt po resecie.\n" : "")
+        (window.Expired ? L.T("Czekam na odczyt po resecie.\n") : "")
         + (string.IsNullOrEmpty(window.DetailText) ? "" : WidgetTips.Line(window.DetailText) + "\n")
-        + $"Odczyt: {UpdatedText(state)}";
+        + L.F("Odczyt: {0}", UpdatedText(state));
     static ResetPresentation Reset(UsageWindow window) => window.Renews
         ? ResetFormatter.Format(window.ResetAt, DateTimeOffset.Now, TimeZoneInfo.Local)
-        : new("Bez resetu miesięcznego", "", "");
+        : new(L.T("Bez resetu miesięcznego"), "", "");
     Button Button(string label, string tooltip, Action action)
     {
         var button = new Button { Content = label, Width = 27, Height = 27,
@@ -202,25 +215,25 @@ public sealed class MainWindow : Window
         var logo = new Canvas { Width = 30, Height = 30 }; Fish(logo, 14, 15, Mint, 1.0); brand.Children.Add(logo);
         var texts = new StackPanel { Margin = new Thickness(5, 0, 0, 0) };
         texts.Children.Add(Text("AI Usage", 15, weight: FontWeights.SemiBold));
-        brandSubtitle = Text("LIMITY KONT AI", 8, Muted); texts.Children.Add(brandSubtitle);
+        brandSubtitle = Text(L.T("LIMITY KONT AI"), 8, Muted); texts.Children.Add(brandSubtitle);
         texts.VerticalAlignment = VerticalAlignment.Center; brand.Children.Add(texts); grid.Children.Add(brand);
         grid.MouseLeftButtonDown += (_, e) => { if (e.OriginalSource is TextBlock or Canvas or Grid or StackPanel) { try { DragMove(); } catch { } SaveSettings(); } };
         var actions = new StackPanel { Orientation = Orientation.Horizontal }; Grid.SetColumn(actions, 1);
-        pinButton = Button("◆", "Zawsze na wierzchu", TogglePin);
-        refreshButton = Button("↻", "Odśwież limity", () => _ = Refresh());
-        modeButton = Button("▤", "Przełącz tryb kompaktowy", ToggleCompact);
-        actions.Children.Add(pinButton); actions.Children.Add(Button("◷", "Historia limitów i szczegóły", OpenInsights));
+        pinButton = Button("◆", L.T("Zawsze na wierzchu"), TogglePin);
+        refreshButton = Button("↻", L.T("Odśwież limity"), () => _ = Refresh());
+        modeButton = Button("▤", L.T("Przełącz tryb kompaktowy"), ToggleCompact);
+        actions.Children.Add(pinButton); actions.Children.Add(Button("◷", L.T("Historia limitów i szczegóły"), OpenInsights));
         actions.Children.Add(refreshButton); actions.Children.Add(modeButton);
-        actions.Children.Add(Button("−", "Ukryj przy zegarze · kliknij ikonę, aby przywrócić", Hide));
+        actions.Children.Add(Button("−", L.T("Ukryj przy zegarze · kliknij ikonę, aby przywrócić"), Hide));
         grid.Children.Add(actions); return grid;
     }
     FrameworkElement Footer()
     {
         var grid = new Grid { Margin = new Thickness(0, 13, 0, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition()); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footer = Text("Łączenie z kontami…", 10, Muted); grid.Children.Add(footer);
+        footer = Text(L.T("Łączenie z kontami…"), 10, Muted); grid.Children.Add(footer);
         var more = Text("•••", 12, Muted); Grid.SetColumn(more, 1); more.Cursor = Cursors.Hand;
-        SetTip(more, "Ustawienia", "Dostawcy, widok, zawsze na wierzchu i autostart Windows.");
+        SetTip(more, L.T("Ustawienia"), L.T("Dostawcy, widok, zawsze na wierzchu i autostart Windows."));
         more.MouseLeftButtonDown += (_, _) => { ContextMenu = BuildMenu(); ContextMenu.IsOpen = true; };
         grid.Children.Add(more); return grid;
     }
@@ -232,39 +245,46 @@ public sealed class MainWindow : Window
             var i = new MenuItem { Header = title, IsCheckable = check, IsChecked = value };
             i.Click += (_, _) => action(); menu.Items.Add(i);
         }
-        Item("Odśwież limity", () => _ = Refresh());
-        Item("Tryb kompaktowy", ToggleCompact, true, settings.Compact);
-        Item("Historia i szczegóły", OpenInsights);
+        Item(L.T("Odśwież limity"), () => _ = Refresh());
+        Item(L.T("Tryb kompaktowy"), ToggleCompact, true, settings.Compact);
+        Item(L.T("Historia i szczegóły"), OpenInsights);
         menu.Items.Add(ProviderMenu());
-        if (settings.IsEnabled("Codex")) Item("Procent przy zegarze · Codex", () => { settings.TrayProvider = "Codex"; SaveSettings(); Render(); });
-        if (settings.IsEnabled("Claude")) Item("Procent przy zegarze · Claude", () => { settings.TrayProvider = "Claude"; SaveSettings(); Render(); });
-        Item("Animacje postaci", () => { settings.AnimateMascots = !settings.AnimateMascots; SaveSettings(); Render(); }, true, settings.AnimateMascots);
-        Item("Zawsze na wierzchu", TogglePin, true, settings.Topmost);
-        Item("Uruchamiaj z Windows", () => { try { Startup.Set(!Startup.Enabled); } catch { System.Windows.MessageBox.Show("Nie można zmienić autostartu."); } }, true, Startup.Enabled);
+        var language = new MenuItem { Header = L.IsPolish ? "Język / Language" : "Language / Język" };
+        foreach (var (code, label) in new[] { ("en", "English"), ("pl", "Polski") }) {
+            var choice = new MenuItem { Header = label, IsCheckable = true, IsChecked = settings.Language == code };
+            choice.Click += (_, _) => SetLanguage(code);
+            language.Items.Add(choice);
+        }
+        menu.Items.Add(language);
+        if (settings.IsEnabled("Codex")) Item(L.T("Procent przy zegarze · Codex"), () => { settings.TrayProvider = "Codex"; SaveSettings(); Render(); });
+        if (settings.IsEnabled("Claude")) Item(L.T("Procent przy zegarze · Claude"), () => { settings.TrayProvider = "Claude"; SaveSettings(); Render(); });
+        Item(L.T("Animacje postaci"), () => { settings.AnimateMascots = !settings.AnimateMascots; SaveSettings(); Render(); }, true, settings.AnimateMascots);
+        Item(L.T("Zawsze na wierzchu"), TogglePin, true, settings.Topmost);
+        Item(L.T("Uruchamiaj z Windows"), () => { try { Startup.Set(!Startup.Enabled); } catch { System.Windows.MessageBox.Show(L.T("Nie można zmienić autostartu.")); } }, true, Startup.Enabled);
         menu.Items.Add(new Separator());
-        Item("Ustaw w prawym dolnym rogu", () => { settings.Left = null; settings.Top = null; PlaceWindow(); SaveSettings(); });
-        if (settings.IsEnabled("Claude")) Item("Claude · strona limitów", () => OpenUrl("https://claude.ai/settings/usage"));
-        if (settings.IsEnabled("Codex")) Item("Codex · strona limitów", () => OpenUrl("https://chatgpt.com/codex/settings/usage"));
-        if (settings.IsEnabled("Devin")) Item("Devin · strona limitów", () => OpenUrl("https://app.devin.ai/settings/usage"));
-        if (settings.IsEnabled("JetBrains Air")) Item("JetBrains Air · kredyty konta", () => OpenUrl("https://air.jetbrains.cloud"));
-        if (settings.IsEnabled("JetBrains Air")) Item("JetBrains Air · połącz konto", () => Process.Start(new ProcessStartInfo(
+        Item(L.T("Ustaw w prawym dolnym rogu"), () => { settings.Left = null; settings.Top = null; PlaceWindow(); SaveSettings(); });
+        if (settings.IsEnabled("Claude")) Item(L.T("Claude · strona limitów"), () => OpenUrl("https://claude.ai/settings/usage"));
+        if (settings.IsEnabled("Codex")) Item(L.T("Codex · strona limitów"), () => OpenUrl("https://chatgpt.com/codex/settings/usage"));
+        if (settings.IsEnabled("Devin")) Item(L.T("Devin · strona limitów"), () => OpenUrl("https://app.devin.ai/settings/usage"));
+        if (settings.IsEnabled("JetBrains Air")) Item(L.T("JetBrains Air · kredyty konta"), () => OpenUrl("https://air.jetbrains.cloud"));
+        if (settings.IsEnabled("JetBrains Air")) Item(L.T("JetBrains Air · połącz konto"), () => Process.Start(new ProcessStartInfo(
             Path.Combine(Settings.ProjectDirectory, "Connect JetBrains Air.cmd")) { UseShellExecute = true, WorkingDirectory = Settings.ProjectDirectory }));
-        Item("Otwórz folder widgetu", () => Process.Start(new ProcessStartInfo(Settings.ProjectDirectory) { UseShellExecute = true }));
+        Item(L.T("Otwórz folder widgetu"), () => Process.Start(new ProcessStartInfo(Settings.ProjectDirectory) { UseShellExecute = true }));
         menu.Items.Add(new Separator());
-        Item("Ukryj przy zegarze", Hide); Item("Zakończ", Close);
+        Item(L.T("Ukryj przy zegarze"), Hide); Item(L.T("Zakończ"), Close);
         return menu;
     }
     MenuItem ProviderMenu()
     {
-        var menu = new MenuItem { Header = "Dostawcy" };
+        var menu = new MenuItem { Header = L.T("Dostawcy") };
         foreach (string name in SetupDiagnostics.Providers) {
             var choice = new MenuItem { Header = name, IsCheckable = true, IsChecked = settings.IsEnabled(name), StaysOpenOnClick = true };
             choice.Click += (_, _) => SetProviderEnabled(name, choice.IsChecked);
             menu.Items.Add(choice);
         }
         menu.Items.Add(new Separator());
-        var detect = new MenuItem { Header = "Wybierz wykryte aplikacje" };
-        detect.ToolTip = "Zastępuje obecny wybór aplikacjami znalezionymi na tym komputerze. Nie sprawdza logowania.";
+        var detect = new MenuItem { Header = L.T("Wybierz wykryte aplikacje") };
+        detect.ToolTip = L.T("Zastępuje obecny wybór aplikacjami znalezionymi na tym komputerze. Nie sprawdza logowania.");
         detect.Click += (_, _) => ApplyProviderSelection(ProviderDiscovery.Detect(settings));
         menu.Items.Add(detect);
         return menu;
@@ -282,7 +302,7 @@ public sealed class MainWindow : Window
         try { if (!preview) settings.Save(); }
         catch {
             settings.EnabledProviders = previous;
-            System.Windows.MessageBox.Show("Nie udało się zapisać wyboru dostawców. Sprawdź dostęp do katalogu danych.", "AI Usage Widget");
+            System.Windows.MessageBox.Show(L.T("Nie udało się zapisać wyboru dostawców. Sprawdź dostęp do katalogu danych."), "AI Usage Widget");
             return;
         }
         selectionVersion++;
@@ -301,6 +321,40 @@ public sealed class MainWindow : Window
     void TogglePin() { settings.Topmost = !settings.Topmost; Topmost = settings.Topmost; if (insights is not null) insights.Topmost = Topmost; SaveSettings(); Render(); }
     void ToggleCompact() { settings.Compact = !settings.Compact; SaveSettings(); Render(); Dispatcher.BeginInvoke(ClampPosition, DispatcherPriority.Loaded); }
     void SaveSettings() { if (preview) return; try { settings.Save(); } catch { } }
+    internal void SetLanguage(string language)
+    {
+        language = L.Normalize(language);
+        if (settings.Language == language) return;
+        string previous = settings.Language;
+        settings.Language = language;
+        try { if (!preview) settings.Save(); }
+        catch {
+            settings.Language = previous;
+            System.Windows.MessageBox.Show(L.IsPolish ? "Nie udało się zapisać języka. Sprawdź dostęp do katalogu danych."
+                : "Could not save the language. Check access to the data folder.", "AI Usage Widget");
+            return;
+        }
+        L.SetLanguage(language);
+        // Keep provider connections, notification deduplication and quota history.
+        // Rebuild just the views so every menu and tooltip changes immediately.
+        bool reopenInsights = insights is not null;
+        string? selectedProvider = insights?.SelectedProvider;
+        int selectedTab = insights?.SelectedTabIndex ?? 0;
+        insights?.Close();
+        var layout = (StackPanel)((Border)Content).Child;
+        layout.Children.Clear();
+        layout.Children.Add(Header()); layout.Children.Add(providerScroll); layout.Children.Add(Footer());
+        ContextMenu = BuildMenu();
+        var oldTrayMenu = tray.ContextMenuStrip;
+        tray.ContextMenuStrip = BuildTrayMenu(); oldTrayMenu?.Dispose();
+        renderedProviders = null; cards.Clear(); Render();
+        if (reopenInsights) {
+            OpenInsights();
+            if (selectedProvider is not null) insights!.SelectProvider(selectedProvider);
+            insights!.SelectTab(selectedTab - 1);
+        }
+        Dispatcher.BeginInvoke(ClampPosition, DispatcherPriority.Loaded);
+    }
     void PlaceWindow()
     {
         var work = SystemParameters.WorkArea;
@@ -335,8 +389,8 @@ public sealed class MainWindow : Window
     {
         if (state.Name is not ("Codex" or "Claude")) return content;
         var button = new Button { Content = content, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(button, "Otwórz szczegóły " + state.Name);
-        SetTip(button, "Otwórz przegląd konta");
+        AutomationProperties.SetName(button, L.T("Otwórz szczegóły ") + state.Name);
+        SetTip(button, L.T("Otwórz przegląd konta"));
         button.Click += (_, _) => OpenProvider(state.Name);
         return button;
     }
@@ -345,20 +399,20 @@ public sealed class MainWindow : Window
     void SetPreviewData()
     {
         var now = DateTimeOffset.Now;
-        codexState = new("Codex", "Pro", new() { new("codex:primary", "5 godzin", 38, now.AddHours(2).ToUnixTimeSeconds(), 300), new("codex:secondary", "Tydzień", 64, now.AddDays(3).ToUnixTimeSeconds(), 10080) }, now, "Połączono", true);
-        claudeState = new("Claude", "Max", new() { new("five_hour", "5 godzin", 22, now.AddHours(4).ToUnixTimeSeconds(), 300), new("seven_day", "Tydzień", 48, now.AddDays(2).ToUnixTimeSeconds(), 10080) }, now, "Połączono", true);
-        devinState = new("Devin", "Pro", new() { new("day", "Dzień", 16, now.AddHours(8).ToUnixTimeSeconds(), 1440) }, now, "Połączono", true);
-        airState = new("JetBrains Air", "AI Pro", new() { new("month", "Miesiąc", 24, now.AddDays(12).ToUnixTimeSeconds(), 0, "26,6 / 35 kredytów AI") }, now, "Połączono", true);
-        antigravityState = new("Antigravity", "Pro", new() { new("gemini", "5 godzin", 12, now.AddHours(3).ToUnixTimeSeconds(), 300, Group: "Gemini") }, now, "Połączono", true);
-        sessions = new(new() { new("Codex", "x1", "Poprawa panelu", "O:/projekty/ai-usage", "working"), new("Codex", "x2", "Weryfikacja tłumaczeń", "O:/projekty/snake-game", "waiting", "Odpowiedź na pytanie"), new("Codex", "x3", "Nowa mapa", "O:/projekty/paper-world", "working"), new("Claude", "c1", "Przegląd interfejsu", "O:/projekty/ai-usage", "working") }, now);
-        codexHealth = new("Codex", "none", "Brak zgłoszonych awarii", now, true); claudeHealth = new("Claude", "none", "Brak zgłoszonych awarii", now, true);
+        codexState = new("Codex", "Pro", new() { new("codex:primary", L.T("5 godzin"), 38, now.AddHours(2).ToUnixTimeSeconds(), 300), new("codex:secondary", L.T("Tydzień"), 64, now.AddDays(3).ToUnixTimeSeconds(), 10080) }, now, L.T("Połączono"), true);
+        claudeState = new("Claude", "Max", new() { new("five_hour", L.T("5 godzin"), 22, now.AddHours(4).ToUnixTimeSeconds(), 300), new("seven_day", L.T("Tydzień"), 48, now.AddDays(2).ToUnixTimeSeconds(), 10080) }, now, L.T("Połączono"), true);
+        devinState = new("Devin", "Pro", new() { new("day", L.T("Dzień"), 16, now.AddHours(8).ToUnixTimeSeconds(), 1440) }, now, L.T("Połączono"), true);
+        airState = new("JetBrains Air", "AI Pro", new() { new("month", L.T("Miesiąc"), 24, now.AddDays(12).ToUnixTimeSeconds(), 0, L.T("26,6 / 35 kredytów AI")) }, now, L.T("Połączono"), true);
+        antigravityState = new("Antigravity", "Pro", new() { new("gemini", L.T("5 godzin"), 12, now.AddHours(3).ToUnixTimeSeconds(), 300, Group: "Gemini") }, now, L.T("Połączono"), true);
+        sessions = new(new() { new("Codex", "x1", L.T("Poprawa panelu"), "O:/projekty/ai-usage", "working"), new("Codex", "x2", L.T("Weryfikacja tłumaczeń"), "O:/projekty/snake-game", "waiting", L.T("Odpowiedź na pytanie")), new("Codex", "x3", L.T("Nowa mapa"), "O:/projekty/paper-world", "working"), new("Claude", "c1", L.T("Przegląd interfejsu"), "O:/projekty/ai-usage", "working") }, now);
+        codexHealth = new("Codex", "none", L.T("Brak zgłoszonych awarii"), now, true); claudeHealth = new("Claude", "none", L.T("Brak zgłoszonych awarii"), now, true);
         history.Samples.Clear();
         foreach (string name in new[] { "Codex", "Claude" })
             for (int i = 0; i <= 288; i++)
             {
                 var at = now.AddMinutes(-5 * (288 - i));
-                history.Samples.Add(new(name, "five", "5 godzin", at, i % 60 * 1.25, at.AddMinutes((60 - i % 60) * 5).ToUnixTimeSeconds()));
-                history.Samples.Add(new(name, "week", "Tydzień", at, 24 + i / 8.0, now.AddDays(3).ToUnixTimeSeconds()));
+                history.Samples.Add(new(name, "five", L.T("5 godzin"), at, i % 60 * 1.25, at.AddMinutes((60 - i % 60) * 5).ToUnixTimeSeconds()));
+                history.Samples.Add(new(name, "week", L.T("Tydzień"), at, 24 + i / 8.0, now.AddDays(3).ToUnixTimeSeconds()));
             }
         analysis = new(new() { new("Codex", "O:/projekty/ai-usage", "a", "codex", now, 120000, 890000, 0, 47000, false), new("Codex", "O:/projekty/snake-game", "b", "codex", now, 48000, 320000, 0, 19000, false), new("Claude", "O:/projekty/ai-usage", "c", "claude", now, 17000, 620000, 8000, 23000, false) },
             new() { new("Claude", "MCP", "context7", now), new("Claude", "Umiejętności", "find-docs", now), new("Claude", "Subagenci", "reviewer", now) }, now, false, 0);
@@ -379,7 +433,7 @@ public sealed class MainWindow : Window
             sessions = next; insights?.UpdateDetails(analysis, sessions); Render();
         }
         catch (OperationCanceledException) { }
-        catch { if (version == selectionVersion) { sessions = new(new(), DateTimeOffset.Now, "Brak odczytu sesji", "Brak odczytu sesji"); Render(); } }
+        catch { if (version == selectionVersion) { sessions = new(new(), DateTimeOffset.Now, L.T("Brak odczytu sesji"), L.T("Brak odczytu sesji")); Render(); } }
         finally { lastActivity = version == selectionVersion ? DateTimeOffset.Now : DateTimeOffset.MinValue; activityBusy = false; }
     }
     async Task RefreshAnalytics()
@@ -411,8 +465,8 @@ public sealed class MainWindow : Window
         if (name is not ("Codex" or "Claude")) return;
         target.Cursor = Cursors.Hand;
         var health = name == "Codex" ? codexHealth : claudeHealth;
-        SetTip(target, !health.Available ? "Status niedostępny" : health.Incident ? "Incydent usługi" : "Brak zgłoszonych awarii",
-            health.Incident ? health.Detail : "");
+        SetTip(target, !health.Available ? L.T("Status niedostępny") : health.Incident ? L.T("Incydent usługi") : L.T("Brak zgłoszonych awarii"),
+            health.Incident ? L.Display(health.Detail) : "");
         target.MouseLeftButtonUp += (_, e) => { OpenUrl((name == "Codex" ? codexHealth : claudeHealth).Url); e.Handled = true; };
     }
     void AddHealth(StackPanel panel, string name)
@@ -420,11 +474,11 @@ public sealed class MainWindow : Window
         if (name is not ("Codex" or "Claude")) return;
         var health = name == "Codex" ? codexHealth : claudeHealth;
         if (health.Available && !health.Incident) return;
-        var label = Text(!health.Available ? "○  Status usługi niedostępny" : health.Incident ? "●  " + (name == "Codex" ? "OpenAI" : "Claude") + " · incydent" : "●  Usługa działa", 9,
+        var label = Text(!health.Available ? L.T("○  Status usługi niedostępny") : health.Incident ? "●  " + (name == "Codex" ? "OpenAI" : "Claude") + L.T(" · incydent") : L.T("●  Usługa działa"), 9,
             !health.Available ? Muted : health.Incident ? Brush("#EAC06C") : Brush("#79C7AE"));
         label.Margin = new Thickness(0, 7, 0, 0); label.Cursor = Cursors.Hand;
-        SetTip(label, name == "Codex" ? "Status usług OpenAI" : "Status usług Claude", health.Detail
-            + (health.At == DateTimeOffset.MinValue ? "" : $"\nOdczyt: {health.At.LocalDateTime:HH:mm:ss}") + "\nKliknij, aby otworzyć stronę statusu.");
+        SetTip(label, name == "Codex" ? L.T("Status usług OpenAI") : L.T("Status usług Claude"), L.Display(health.Detail)
+            + (health.At == DateTimeOffset.MinValue ? "" : L.F("\nOdczyt: {0:HH:mm:ss}", health.At.LocalDateTime)) + L.T("\nKliknij, aby otworzyć stronę statusu."));
         label.MouseLeftButtonUp += (_, e) => { OpenUrl(health.Url); e.Handled = true; };
         panel.Children.Add(label);
     }
@@ -434,11 +488,11 @@ public sealed class MainWindow : Window
         var active = sessions.Sessions.Where(s => s.Provider == providerName).ToList();
         if (active.Count == 0 && sessions.ErrorFor(providerName) is null) return;
         var block = new StackPanel { Margin = new Thickness(0, 7, 0, 1), Background = Brushes.Transparent, Cursor = Cursors.Hand };
-        string summary = active.Count == 0 ? "Sesje · brak odczytu" : string.Join(" · ", new[]
+        string summary = active.Count == 0 ? L.T("Sesje · brak odczytu") : string.Join(" · ", new[]
         {
-            active.Count(s => s.State == "working") is int n && n > 0 ? $"▶ Pracuje: {n}" : "",
-            active.Count(s => s.State == "waiting") is int w && w > 0 ? $"? Czeka: {w}" : "",
-            active.Count(s => s.State == "idle") is int i && i > 0 ? $"○ Bezczynne: {i}" : ""
+            active.Count(s => s.State == "working") is int n && n > 0 ? L.F("▶ Pracuje: {0}", n) : "",
+            active.Count(s => s.State == "waiting") is int w && w > 0 ? L.F("? Czeka: {0}", w) : "",
+            active.Count(s => s.State == "idle") is int i && i > 0 ? L.F("○ Bezczynne: {0}", i) : ""
         }.Where(s => s.Length > 0));
         if (active.Count != 1) block.Children.Add(Text(summary, 10, active.Any(s => s.State == "waiting") ? Brush("#EAC06C") : Muted));
         // Active projects remain visible in compact mode too, without expanding the quota rows.
@@ -448,8 +502,8 @@ public sealed class MainWindow : Window
                 + (active.Count == 1 ? " · " + s.StateLabel.ToLowerInvariant() : ""), 10, s.State == "waiting" ? Brush("#EAC06C") : Muted);
             line.TextTrimming = TextTrimming.CharacterEllipsis; block.Children.Add(line);
         }
-        if (active.Count > (settings.Compact ? 2 : 4)) block.Children.Add(Text("+ " + (active.Count - (settings.Compact ? 2 : 4)) + " więcej · szczegóły", 9, Muted));
-        SetTip(block, "Otwórz listę sesji", sessions.ErrorFor(providerName) ?? "");
+        if (active.Count > (settings.Compact ? 2 : 4)) block.Children.Add(Text("+ " + (active.Count - (settings.Compact ? 2 : 4)) + L.T(" więcej · szczegóły"), 9, Muted));
+        SetTip(block, L.T("Otwórz listę sesji"), sessions.ErrorFor(providerName) ?? "");
         block.MouseLeftButtonUp += (_, e) => { OpenProvider(providerName, true); e.Handled = true; };
         panel.Children.Add(block);
     }
@@ -464,14 +518,16 @@ public sealed class MainWindow : Window
     }
     void Render()
     {
+        codexState = L.Localize(codexState); claudeState = L.Localize(claudeState);
+        devinState = L.Localize(devinState); airState = L.Localize(airState); antigravityState = L.Localize(antigravityState);
         double scrollOffset = providerScroll.VerticalOffset;
         var enabled = SetupDiagnostics.Providers.Where(settings.IsEnabled).ToArray();
         if (renderedProviders is null || !renderedProviders.SequenceEqual(enabled)) {
             body.Children.Clear(); cards.Clear(); renderedProviders = enabled;
             if (enabled.Length == 0) {
                 var empty = new StackPanel { Margin = new Thickness(8, 8, 8, 12) };
-                empty.Children.Add(Text("Wybierz dostawców", 15, weight: FontWeights.SemiBold));
-                var explanation = Text("W menu ••• → Dostawcy zaznacz konta, których chcesz używać. Możesz też wybrać wykryte aplikacje.", 12, Muted);
+                empty.Children.Add(Text(L.T("Wybierz dostawców"), 15, weight: FontWeights.SemiBold));
+                var explanation = Text(L.T("W menu ••• → Dostawcy zaznacz konta, których chcesz używać. Możesz też wybrać wykryte aplikacje."), 12, Muted);
                 explanation.TextWrapping = TextWrapping.Wrap; explanation.Margin = new Thickness(0, 10, 0, 0); empty.Children.Add(explanation);
                 body.Children.Add(empty);
             }
@@ -488,9 +544,9 @@ public sealed class MainWindow : Window
         var states = new[] { codexState, claudeState, devinState, airState, antigravityState }.Where(s => settings.IsEnabled(s.Name)).ToArray();
         var updates = states.Select(s => s.Updated).Where(d => d.HasValue).ToList();
         footer.FontSize = settings.Compact ? 9 : 10;
-        footer.Text = enabled.Length == 0 ? "Brak wybranych dostawców" : busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
-            : $"Odczyt {updates.Max()!.Value.LocalDateTime:HH:mm}" + (settings.Compact ? "" : " · automatyczne odświeżanie");
-        SetTip(footer, "Aktualizacja danych", string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")));
+        footer.Text = enabled.Length == 0 ? L.T("Brak wybranych dostawców") : busy ? L.T("Odświeżanie…") : updates.Count == 0 ? L.T("Łączenie z kontami…")
+            : L.F("Odczyt {0:HH:mm}", updates.Max()!.Value.LocalDateTime) + (settings.Compact ? "" : L.T(" · automatyczne odświeżanie"));
+        SetTip(footer, L.T("Aktualizacja danych"), string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")));
         tray.Text = TrayFormatter.Format(codexState, claudeState, settings);
         var selected = states.FirstOrDefault(s => s.Name == settings.TrayProvider && s.Name is "Codex" or "Claude")
             ?? states.FirstOrDefault(s => s.Name is "Codex" or "Claude");
@@ -559,7 +615,7 @@ public sealed class MainWindow : Window
         var status = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Background = Brushes.Transparent };
         bool stale = Stale(state);
         var dot = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Fill = stale ? Brush("#E5B66A") : new SolidColorBrush(color), Margin = new Thickness(0, 0, 5, 0) };
-        status.Children.Add(dot); if (stale) status.Children.Add(Text("Oczekiwanie", 9, Muted));
+        status.Children.Add(dot); if (stale) status.Children.Add(Text(L.T("Oczekiwanie"), 9, Muted));
         LinkHealth(status, state.Name);
         Grid.SetColumn(status, 1); header.Children.Add(status); panel.Children.Add(header);
         AddSessions(panel, state.Name);
@@ -571,7 +627,7 @@ public sealed class MainWindow : Window
             panel.Children.Add(waiting);
             if (state.Name == "Claude")
             {
-                var hint = Text("Dane pojawią się po odpowiedzi w Claude Code.", 9, Muted); hint.TextWrapping = TextWrapping.Wrap;
+                var hint = Text(L.T("Dane pojawią się po odpowiedzi w Claude Code."), 9, Muted); hint.TextWrapping = TextWrapping.Wrap;
                 panel.Children.Add(hint);
             }
             return card;
@@ -589,19 +645,19 @@ public sealed class MainWindow : Window
             var percent = Text(window.Expired ? "—" : $"{window.Remaining:0}%", settings.Compact ? 18 : 24,
                 QuotaColor(window, stale), FontWeights.SemiBold);
             remaining.Children.Add(percent);
-            var remainingLabel = Text("pozostało", settings.Compact ? 10 : 11, Muted);
+            var remainingLabel = Text(L.T("pozostało"), settings.Compact ? 10 : 11, Muted);
             remainingLabel.VerticalAlignment = VerticalAlignment.Bottom; remainingLabel.Margin = new Thickness(5, 0, 0, 4);
             remaining.Children.Add(remainingLabel);
             Grid.SetColumn(remaining, 1); info.Children.Add(remaining); row.Children.Add(info);
 
             row.Children.Add(RemainingBar(window, state, GroupColor(window, color)));
             row.Children.Add(ResetBadge(window, GroupColor(window, color)));
-            SetTip(row, "Źródło danych", QuotaDetail(window, state));
+            SetTip(row, L.T("Źródło danych"), QuotaDetail(window, state));
             panel.Children.Add(row);
         }
         if (!settings.Compact && (state.Error is not null || stale))
         {
-            var source = Text(state.Error ?? "Dane z ostatniego odczytu · czekam na aktualizację", 10, Muted);
+            var source = Text(state.Error ?? L.T("Dane z ostatniego odczytu · czekam na aktualizację"), 10, Muted);
             source.Margin = new Thickness(0, 12, 0, 0); source.TextWrapping = TextWrapping.Wrap; panel.Children.Add(source);
         }
         return card;
@@ -626,7 +682,7 @@ public sealed class MainWindow : Window
         var providerHeading = new StackPanel { Orientation = Orientation.Horizontal };
         providerHeading.Children.Add(ProviderLink(brand, state)); providerHeading.Children.Add(statusTarget);
         header.Children.Add(providerHeading);
-        var remainingHeading = Text("Pozostało", 10, Muted); remainingHeading.VerticalAlignment = VerticalAlignment.Center;
+        var remainingHeading = Text(L.T("Pozostało"), 10, Muted); remainingHeading.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(remainingHeading, 1); header.Children.Add(remainingHeading);
         if (state.Name is not ("Codex" or "Claude")) SetTip(header, state.Plan, state.Status);
         panel.Children.Add(header);
@@ -654,7 +710,7 @@ public sealed class MainWindow : Window
             main.Children.Add(labels);
             var value = Text(window.Expired ? "—" : $"{window.Remaining:0}%", 22, QuotaColor(window, stale), FontWeights.SemiBold);
             Grid.SetColumn(value, 1); main.Children.Add(value); row.Children.Add(main);
-            SetTip(row, "Źródło danych", QuotaDetail(window, state));
+            SetTip(row, L.T("Źródło danych"), QuotaDetail(window, state));
             row.Children.Add(RemainingBar(window, state, GroupColor(window, color)));
             var reset = Reset(window);
             var resetLine = new Grid { Margin = new Thickness(0, 2, 0, 0), Background = Brushes.Transparent };
@@ -667,8 +723,8 @@ public sealed class MainWindow : Window
         }
         if (state.Windows.Count > 0 && stale)
         {
-            var warning = Text("Dane nieaktualne", 10, Brush("#EAC06C")); warning.Margin = new Thickness(0, 7, 0, 0);
-            SetTip(warning, "Czekam na aktualny odczyt", state.Error ?? state.Status);
+            var warning = Text(L.T("Dane nieaktualne"), 10, Brush("#EAC06C")); warning.Margin = new Thickness(0, 7, 0, 0);
+            SetTip(warning, L.T("Czekam na aktualny odczyt"), state.Error ?? state.Status);
             panel.Children.Add(warning);
         }
         else if (state.Error is not null)
@@ -685,7 +741,7 @@ public sealed class MainWindow : Window
         bool separator = currentGroup is not null;
         currentGroup = window.Group;
         var heading = Text(window.Group, 11, new SolidColorBrush(GroupColor(window, color)), FontWeights.SemiBold);
-        SetTip(heading, window.Group, window.DetailText ?? "Wspólna pula modeli");
+        SetTip(heading, window.Group, window.DetailText ?? L.T("Wspólna pula modeli"));
         panel.Children.Add(new Border { Child = heading, Margin = new Thickness(0, separator ? 12 : 10, 0, 0),
             Padding = new Thickness(0, separator ? 10 : 0, 0, 0), BorderThickness = new Thickness(0, separator ? 1 : 0, 0, 0), BorderBrush = Brush("#3A4351") });
     }
@@ -705,7 +761,7 @@ public sealed class MainWindow : Window
         fill.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
         fill.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.ForegroundProperty));
         track.AppendChild(fill); rail.AppendChild(track); template.VisualTree = rail; bar.Template = template;
-        AutomationProperties.SetName(bar, $"{state.Name} · {window.Label} · pozostały limit");
+        AutomationProperties.SetName(bar, L.F("{0} · {1} · pozostały limit", state.Name, window.Label));
         return bar;
     }
     FrameworkElement ResetBadge(UsageWindow window, Color color)
@@ -830,7 +886,7 @@ public sealed class MainWindow : Window
             string key = state.Name + ":" + window.Id + ":" + window.ResetAt;
             if (window.Remaining > 20) notified.Remove(key);
             if (window.Remaining <= 10 && notified.Add(key))
-                tray.ShowBalloonTip(5000, $"{state.Name} · niski limit", $"Pozostało {window.Remaining:0}% ({(window.Group is null ? "" : window.Group + " · ")}{window.Label}). {window.ResetText}", Forms.ToolTipIcon.Warning);
+                tray.ShowBalloonTip(5000, L.F("{0} · niski limit", state.Name), L.F("Pozostało {0:0}% ({1}{2}). {3}", window.Remaining, (window.Group is null ? "" : window.Group + " · "), window.Label, window.ResetText), Forms.ToolTipIcon.Warning);
         }
     }
     string CachePath => Path.Combine(Settings.DataDirectory, "usage-cache.json");
@@ -840,11 +896,11 @@ public sealed class MainWindow : Window
         {
             var states = JsonSerializer.Deserialize<List<ProviderState>>(File.ReadAllText(CachePath));
             foreach (var s in states ?? new())
-                if (s.Name == "Codex") codexState = s with { Connected = false, Status = "Zapisany odczyt · łączenie…" };
-                else if (s.Name == "Claude") claudeState = s with { Connected = false, Status = "Zapisany odczyt · łączenie…" };
-                else if (s.Name == "Devin") devinState = s with { Connected = false, Status = "Zapisany odczyt · łączenie…" };
-                else if (s.Name == "JetBrains Air") airState = s with { Connected = false, Status = "Zapisany odczyt · łączenie…" };
-                else if (s.Name == "Antigravity") antigravityState = s with { Windows = s.Windows.Where(w => w.Group is not null).ToList(), Connected = false, Status = "Zapisany odczyt · łączenie…" };
+                if (s.Name == "Codex") codexState = s with { Connected = false, Status = L.T("Zapisany odczyt · łączenie…") };
+                else if (s.Name == "Claude") claudeState = s with { Connected = false, Status = L.T("Zapisany odczyt · łączenie…") };
+                else if (s.Name == "Devin") devinState = s with { Connected = false, Status = L.T("Zapisany odczyt · łączenie…") };
+                else if (s.Name == "JetBrains Air") airState = s with { Connected = false, Status = L.T("Zapisany odczyt · łączenie…") };
+                else if (s.Name == "Antigravity") antigravityState = s with { Windows = s.Windows.Where(w => w.Group is not null).ToList(), Connected = false, Status = L.T("Zapisany odczyt · łączenie…") };
         }
         catch { }
     }

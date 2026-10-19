@@ -41,6 +41,8 @@ public static class Program
         if (args.Contains("--diagnose-antigravity")) return DiagnoseAntigravity().GetAwaiter().GetResult();
         if (args.Contains("--diagnose-activity")) return DiagnoseActivity(args.Contains("--full-history")).GetAwaiter().GetResult();
         if (args.Contains("--visual-test")) return VisualVerification.Run();
+        var settings = Settings.Load();
+        L.SetLanguage(settings.Language);
         using var mutex = new Mutex(true, @"Local\AIUsageWidget.Video.v1", out bool first);
         using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\AIUsageWidget.Show.v1");
         if (!first) { showEvent.Set(); return 0; }
@@ -48,9 +50,9 @@ public static class Program
         app.DispatcherUnhandledException += (_, e) =>
         {
             File.AppendAllText(Path.Combine(Settings.DataDirectory, "errors.log"), $"{DateTimeOffset.Now:O} {e.Exception.GetType().Name}\n");
-            System.Windows.MessageBox.Show("Widget napotkał błąd. Uruchom go ponownie. Szczegóły zapisano w data/errors.log.", "AI Usage Widget");
+            System.Windows.MessageBox.Show(L.T("Widget napotkał błąd. Uruchom go ponownie. Szczegóły zapisano w data/errors.log."), "AI Usage Widget");
         };
-        var window = new MainWindow(Settings.Load());
+        var window = new MainWindow(settings);
         var registration = ThreadPool.RegisterWaitForSingleObject(showEvent,
             (_, _) => app.Dispatcher.BeginInvoke(() => window.Restore()), null, Timeout.Infinite, false);
         if (args.Contains("--capture"))

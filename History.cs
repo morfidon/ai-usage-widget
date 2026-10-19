@@ -27,7 +27,7 @@ public sealed class UsageHistory
                 .OrderBy(s => s.At).DistinctBy(s => (s.Provider, s.Id, s.At)));
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
-        { if (File.Exists(this.path)) Error = "Nie można odczytać historii (" + e.GetType().Name + ")"; }
+        { if (File.Exists(this.path)) Error = L.T("Nie można odczytać historii (") + e.GetType().Name + ")"; }
     }
     public bool Record(ProviderState state, DateTimeOffset now)
     {
@@ -58,7 +58,7 @@ public sealed class UsageHistory
             Error = null;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        { Error = "Nie można zapisać historii (" + e.GetType().Name + ")"; }
+        { Error = L.T("Nie można zapisać historii (") + e.GetType().Name + ")"; }
     }
     public static bool CanConnect(UsageSample a, UsageSample b) => a.Provider == b.Provider && a.Id == b.Id
         && a.ResetAt == b.ResetAt && b.At > a.At && b.At - a.At <= TimeSpan.FromMinutes(12)

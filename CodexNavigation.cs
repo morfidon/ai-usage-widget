@@ -15,7 +15,7 @@ public static class CodexNavigation
     public static string? Open(string id)
     {
         var uri = ThreadUri(id);
-        if (uri is null) return "Brak poprawnego ID rozmowy. Możesz skopiować identyfikator sesji.";
+        if (uri is null) return L.T("Brak poprawnego ID rozmowy. Możesz skopiować identyfikator sesji.");
         IApplicationActivationManager? manager = null;
         try
         {
@@ -32,7 +32,7 @@ public static class CodexNavigation
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException)
         {
-            return "Nie udało się otworzyć Codex. Uruchom aplikację i spróbuj ponownie lub skopiuj ID sesji.";
+            return L.T("Nie udało się otworzyć Codex. Uruchom aplikację i spróbuj ponownie lub skopiuj ID sesji.");
         }
     }
 

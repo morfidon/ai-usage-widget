@@ -81,7 +81,7 @@ public static class AdditionalUsageParser
         // Protobuf omits zero-valued scalar fields. A real reset identifies an active quota.
         // Missing/reset=0 or negative sentinels must never become a fabricated 0%/100% bar.
         if (strategy == "BILLING_STRATEGY_QUOTA")
-            foreach (var (id, label, minutes) in new[] { ("daily", "Dzień", 1440), ("weekly", "Tydzień", 10080) })
+            foreach (var (id, label, minutes) in new[] { ("daily", L.T("Dzień"), 1440), ("weekly", L.T("Tydzień"), 10080) })
             {
                 long? reset = Unix(s, id + "QuotaResetAtUnix");
                 double? remaining = Numeric(s, id + "QuotaRemainingPercent");
@@ -90,15 +90,15 @@ public static class AdditionalUsageParser
                     windows.Add(new(id, label, 100 - remaining.Value, reset, minutes));
             }
         return new("Devin", plan, windows, DateTimeOffset.Now,
-            windows.Count > 0 ? "Połączono · konto Devin" : "Konto nie udostępnia limitów procentowych", true);
+            windows.Count > 0 ? L.T("Połączono · konto Devin") : L.T("Konto nie udostępnia limitów procentowych"), true);
     }
     public static ProviderState Air(JsonElement root)
     {
         var windows = new List<UsageWindow>();
         double? milliseconds = Numeric(root, "refillNext");
         long? reset = milliseconds is > 0 and < 253402300799000 ? (long)(milliseconds.Value / 1000) : null;
-        string Balance(double remaining, double maximum) => remaining.ToString("0.##", CultureInfo.GetCultureInfo("pl-PL"))
-            + " / " + maximum.ToString("0.##", CultureInfo.GetCultureInfo("pl-PL")) + " kredytów AI";
+        string Balance(double remaining, double maximum) => remaining.ToString("0.##", L.Culture)
+            + " / " + maximum.ToString("0.##", L.Culture) + L.T(" kredytów AI");
         void Bucket(JsonElement bucket, string id, string label, bool renews)
         {
             double? maximum = Numeric(bucket, "maximum"), available = Numeric(bucket, "available"), current = Numeric(bucket, "current");
@@ -110,20 +110,20 @@ public static class AdditionalUsageParser
                 Balance(remaining, maximum.Value), renews));
         }
         if (UsageParser.Object(root, "tariffQuota") is JsonElement tariff)
-            Bucket(tariff, "monthly", "Miesiąc", true);
+            Bucket(tariff, "monthly", L.T("Miesiąc"), true);
         else
         {
             double? maximum = Numeric(root, "maxDollars"), used = Numeric(root, "usedDollars");
             if (maximum is > 0 && used is >= 0)
             {
                 double remaining = Math.Clamp(maximum.Value - used.Value, 0, maximum.Value);
-                windows.Add(new("credits", "Kredyty AI", 100 - remaining / maximum.Value * 100, reset, 0, Balance(remaining, maximum.Value)));
+                windows.Add(new("credits", L.T("Kredyty AI"), 100 - remaining / maximum.Value * 100, reset, 0, Balance(remaining, maximum.Value)));
             }
         }
-        if (UsageParser.Object(root, "topUpQuota") is JsonElement topup) Bucket(topup, "topup", "Dodatkowe", false);
+        if (UsageParser.Object(root, "topUpQuota") is JsonElement topup) Bucket(topup, "topup", L.T("Dodatkowe"), false);
         // licenseName may be the license owner's name, rather than a subscription tier.
         return new("JetBrains Air", "JetBrains AI", windows, DateTimeOffset.Now,
-            windows.Count > 0 ? "Połączono · kredyty JetBrains AI" : "Konto nie udostępnia limitu procentowego", true);
+            windows.Count > 0 ? L.T("Połączono · kredyty JetBrains AI") : L.T("Konto nie udostępnia limitu procentowego"), true);
     }
 }
 
@@ -141,20 +141,20 @@ public sealed class DevinProvider : IDisposable
             if (last is not null && DateTimeOffset.UtcNow < nextRead) return last;
             nextRead = DateTimeOffset.UtcNow.AddMinutes(2);
             string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "devin", "User", "globalStorage", "state.vscdb");
-            if (!File.Exists(path)) return last = ProviderState.Empty("Devin") with { Status = "Nie znaleziono danych aplikacji Devin", SetupStatus = "login_required" };
+            if (!File.Exists(path)) return last = ProviderState.Empty("Devin") with { Status = L.T("Nie znaleziono danych aplikacji Devin"), SetupStatus = "login_required" };
             var state = DesktopState.ReadDevin(path);
             if (!state.TryGetValue("windsurfAuthStatus", out var authText))
-                return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się w aplikacji Devin", SetupStatus = "login_required" };
+                return last = ProviderState.Empty("Devin") with { Status = L.T("Zaloguj się w aplikacji Devin"), SetupStatus = "login_required" };
             using var auth = JsonDocument.Parse(authText);
             string? key = UsageParser.Text(auth.RootElement, "apiKey");
-            if (string.IsNullOrWhiteSpace(key)) return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się w aplikacji Devin", SetupStatus = "login_required" };
+            if (string.IsNullOrWhiteSpace(key)) return last = ProviderState.Empty("Devin") with { Status = L.T("Zaloguj się w aplikacji Devin"), SetupStatus = "login_required" };
             string server = "https://server.self-serve.windsurf.com";
             if (state.TryGetValue("codeium.windsurf", out var configuration))
             {
                 using var config = JsonDocument.Parse(configuration);
                 server = UsageParser.Text(config.RootElement, "apiServerUrl") ?? server;
             }
-            if (!AllowedServer(server)) return last = ProviderState.Empty("Devin") with { Status = "Nieobsługiwany serwer konta Devin" };
+            if (!AllowedServer(server)) return last = ProviderState.Empty("Devin") with { Status = L.T("Nieobsługiwany serwer konta Devin") };
             string version = "1.99.3";
             string product = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Devin", "resources", "app", "package.json");
             if (File.Exists(product))
@@ -169,14 +169,14 @@ public sealed class DevinProvider : IDisposable
                 ideName = "devin", ideVersion = version, extensionVersion = version, locale = "en" } }), Encoding.UTF8, "application/json");
             using var response = await http.SendAsync(request, token);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się ponownie w aplikacji Devin", SetupStatus = "login_required" };
+                return last = ProviderState.Empty("Devin") with { Status = L.T("Zaloguj się ponownie w aplikacji Devin"), SetupStatus = "login_required" };
             if (response.StatusCode == HttpStatusCode.TooManyRequests) nextRead = DateTimeOffset.UtcNow.AddMinutes(10);
             response.EnsureSuccessStatusCode();
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
             return last = AdditionalUsageParser.Devin(document.RootElement);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch { return last = ProviderState.Empty("Devin") with { Status = "Brak odczytu Devin · ponowię połączenie" }; }
+        catch { return last = ProviderState.Empty("Devin") with { Status = L.T("Brak odczytu Devin · ponowię połączenie") }; }
         finally { gate.Release(); }
     }
     public static bool AllowedServer(string server) => Uri.TryCreate(server, UriKind.Absolute, out var uri)
@@ -211,7 +211,7 @@ public sealed class AirProvider : IDisposable
             if (last is not null && DateTimeOffset.UtcNow < nextRead) return last;
             nextRead = DateTimeOffset.UtcNow.AddMinutes(2);
             string? exe = Locate();
-            if (exe is null) return last = ProviderState.Empty("JetBrains Air") with { Status = "Brak narzędzia JetBrains Central", SetupStatus = "not_installed" };
+            if (exe is null) return last = ProviderState.Empty("JetBrains Air") with { Status = L.T("Brak narzędzia JetBrains Central"), SetupStatus = "not_installed" };
             // Native Central manages its encrypted credentials and refreshes them itself.
             // This command reads quota; it neither starts the proxy nor wires any agent.
             var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true,
@@ -227,13 +227,13 @@ public sealed class AirProvider : IDisposable
             {
                 bool signedIn = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".jetbrains-central", "tokens.enc"));
                 return last = ProviderState.Empty("JetBrains Air") with { Status = signedIn
-                    ? "Brak odczytu JetBrains · ponowię połączenie" : "Dokończ logowanie JetBrains w przeglądarce", SetupStatus = signedIn ? "error" : "login_required" };
+                    ? L.T("Brak odczytu JetBrains · ponowię połączenie") : L.T("Dokończ logowanie JetBrains w przeglądarce"), SetupStatus = signedIn ? "error" : "login_required" };
             }
             using var document = JsonDocument.Parse(json);
             return last = AdditionalUsageParser.Air(document.RootElement);
         }
         catch (OperationCanceledException) when (outer.IsCancellationRequested) { throw; }
-        catch { return last = ProviderState.Empty("JetBrains Air") with { Status = "Brak odczytu JetBrains · ponowię połączenie" }; }
+        catch { return last = ProviderState.Empty("JetBrains Air") with { Status = L.T("Brak odczytu JetBrains · ponowię połączenie") }; }
         finally
         {
             if (process is not null)

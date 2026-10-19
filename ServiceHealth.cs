@@ -10,7 +10,7 @@ namespace AIUsageWidget;
 
 public sealed record ServiceHealth(string Provider, string Indicator, string Detail, DateTimeOffset At, bool Available)
 {
-    public static ServiceHealth Empty(string name) => new(name, "unknown", "Oczekiwanie na status usługi", DateTimeOffset.MinValue, false);
+    public static ServiceHealth Empty(string name) => new(name, "unknown", L.T("Oczekiwanie na status usługi"), DateTimeOffset.MinValue, false);
     public string Url => Provider == "Claude" ? "https://status.claude.com" : "https://status.openai.com";
     public bool Incident => Available && Indicator != "none";
 }
@@ -31,19 +31,19 @@ public sealed class HealthMonitor : IDisposable
             return Parse(name, doc.RootElement, DateTimeOffset.Now);
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or OperationCanceledException)
-        { token.ThrowIfCancellationRequested(); return new(name, "unknown", "Nie można odczytać statusu usługi", DateTimeOffset.Now, false); }
+        { token.ThrowIfCancellationRequested(); return new(name, "unknown", L.T("Nie można odczytać statusu usługi"), DateTimeOffset.Now, false); }
     }
     public static ServiceHealth Parse(string name, JsonElement root, DateTimeOffset at)
     {
         var status = UsageParser.Object(root, "status");
-        if (status is null) return new(name, "unknown", "Brak danych statusu usługi", at, false);
+        if (status is null) return new(name, "unknown", L.T("Brak danych statusu usługi"), at, false);
         string indicator = UsageParser.Text(status.Value, "indicator") ?? "unknown";
         var incidents = new List<string>();
         if (root.TryGetProperty("incidents", out var list) && list.ValueKind == JsonValueKind.Array)
             incidents.AddRange(list.EnumerateArray().Where(i => UsageParser.Text(i, "status") is not ("resolved" or "postmortem"))
-                .Select(i => UsageParser.Text(i, "name") ?? "Incydent"));
+                .Select(i => UsageParser.Text(i, "name") ?? L.T("Incydent")));
         return new(name, indicator, incidents.Count > 0 ? string.Join("\n", incidents)
-            : indicator == "none" ? "Brak zgłoszonych awarii" : UsageParser.Text(status.Value, "description") ?? "Zakłócenia usług", at, indicator != "unknown");
+            : indicator == "none" ? L.T("Brak zgłoszonych awarii") : UsageParser.Text(status.Value, "description") ?? L.T("Zakłócenia usług"), at, indicator != "unknown");
     }
     public void Dispose() => http.Dispose();
 }

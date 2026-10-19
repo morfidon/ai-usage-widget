@@ -85,7 +85,7 @@ public sealed class TranscriptAnalytics : IDisposable
         public readonly JsonlCursor Cursor = new();
         public readonly Dictionary<string, TokenEntry> Entries = new();
         public readonly Dictionary<string, ToolEntry> Tools = new();
-        public string Project = "Nieznany projekt", Session = "", Model = "nieznany";
+        public string Project = L.T("Nieznany projekt"), Session = "", Model = L.T("nieznany");
         public bool Subagent;
         public long LastInput, LastCached, LastOutput;
         public void Dispose() => Cursor.Dispose();
@@ -191,7 +191,7 @@ public sealed class TranscriptAnalytics : IDisposable
         {
             string id = UsageParser.Text(m, "id") ?? UsageParser.Text(e, "uuid") ?? "";
             if (id.Length == 0 || at < since) return;
-            string model = UsageParser.Text(m, "model") ?? "nieznany";
+            string model = UsageParser.Text(m, "model") ?? L.T("nieznany");
             if (UsageParser.Object(m, "usage") is JsonElement u)
             {
                 var entry = new TokenEntry(provider, f.Project, f.Session, model, at, N(u, "input_tokens"), N(u, "cache_read_input_tokens"),

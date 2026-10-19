@@ -12,7 +12,7 @@ namespace AIUsageWidget;
 
 public sealed record LiveSession(string Provider, string Id, string Name, string Directory, string State, string Reason = "")
 {
-    public string StateLabel => State switch { "working" => "Pracuje", "waiting" => "Czeka na Ciebie", "idle" => "Bezczynna", _ => "Stan nieznany" };
+    public string StateLabel => State switch { "working" => L.T("Pracuje"), "waiting" => L.T("Czeka na Ciebie"), "idle" => L.T("Bezczynna"), _ => L.T("Stan nieznany") };
 }
 public sealed record SessionSnapshot(List<LiveSession> Sessions, DateTimeOffset At, string? ClaudeError = null, string? CodexError = null)
 {
@@ -78,7 +78,7 @@ public sealed class SessionMonitor
     async Task<(List<LiveSession>, string?)> ReadClaude(CancellationToken outer)
     {
         string? exe = LocalPaths.ClaudeExe();
-        if (exe is null) return (new(), "Nie znaleziono Claude Code");
+        if (exe is null) return (new(), L.T("Nie znaleziono Claude Code"));
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(outer); timeout.CancelAfter(TimeSpan.FromSeconds(10));
         var info = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Settings.ProjectDirectory };
@@ -86,19 +86,19 @@ public sealed class SessionMonitor
         info.Environment["CLAUDE_CONFIG_DIR"] = LocalPaths.Claude(settings);
         Process? p;
         try { p = Process.Start(info); }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException) { return (new(), "Nie można odczytać sesji Claude"); }
-        if (p is null) return (new(), "Nie można odczytać sesji Claude");
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException) { return (new(), L.T("Nie można odczytać sesji Claude")); }
+        if (p is null) return (new(), L.T("Nie można odczytać sesji Claude"));
         using var ownedProcess = p;
         try
         {
             var output = p.StandardOutput.ReadToEndAsync(timeout.Token); var error = p.StandardError.ReadToEndAsync(timeout.Token);
             await p.WaitForExitAsync(timeout.Token); await error;
-            if (p.ExitCode != 0) return (new(), "Odczyt sesji Claude niedostępny");
+            if (p.ExitCode != 0) return (new(), L.T("Odczyt sesji Claude niedostępny"));
             using var doc = JsonDocument.Parse(await output);
             return (ParseClaude(doc.RootElement), null);
         }
         catch (Exception e) when (e is JsonException or OperationCanceledException or IOException)
-        { outer.ThrowIfCancellationRequested(); return (new(), "Sesje Claude · brak aktualnego odczytu"); }
+        { outer.ThrowIfCancellationRequested(); return (new(), L.T("Sesje Claude · brak aktualnego odczytu")); }
         finally { try { if (!p.HasExited) p.Kill(true); } catch { } }
     }
     public static List<LiveSession> ParseClaude(JsonElement root)
@@ -118,7 +118,7 @@ public sealed class SessionMonitor
         return result.DistinctBy(s => s.Id).ToList();
     }
     static string Reason(string reason) => reason switch
-    { "permission prompt" => "Zgoda na działanie", "input needed" => "Odpowiedź na pytanie", "sandbox request" => "Zgoda na dostęp", "dialog open" => "Otwarty dialog", "worker request" => "Decyzja dotycząca zadania", _ => reason };
+    { "permission prompt" => L.T("Zgoda na działanie"), "input needed" => L.T("Odpowiedź na pytanie"), "sandbox request" => L.T("Zgoda na dostęp"), "dialog open" => L.T("Otwarty dialog"), "worker request" => L.T("Decyzja dotycząca zadania"), _ => reason };
     public static bool WriterIsLive(string root, string id)
     {
         if (!Guid.TryParse(id, out _)) return false;
@@ -154,12 +154,12 @@ public sealed class SessionMonitor
                     $"SELECT item_json FROM thread_items WHERE thread_id='{id}' AND turn_id='{turnId}' AND completed_at_ms IS NULL ORDER BY rollout_ordinal DESC LIMIT 12", 1);
                 bool waiting = items.Any(r => IsWaitingItem(r[0]));
                 result.Add(new("Codex", t[0], string.IsNullOrWhiteSpace(t[2]) ? Path.GetFileName(t[1]) : t[2], t[1], waiting ? "waiting" : "working",
-                    waiting ? "Odpowiedź lub zgoda" : ""));
+                    waiting ? L.T("Odpowiedź lub zgoda") : ""));
             }
             return (result, null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
-        { return (new(), "Monitor sesji Codex niedostępny · sprawdź wersję aplikacji"); }
+        { return (new(), L.T("Monitor sesji Codex niedostępny · sprawdź wersję aplikacji")); }
     }
     public static bool IsWaitingItem(string json)
     {
