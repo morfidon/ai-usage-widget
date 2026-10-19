@@ -503,7 +503,7 @@ public sealed class MainWindow : Window
             line.TextTrimming = TextTrimming.CharacterEllipsis; block.Children.Add(line);
         }
         if (active.Count > (settings.Compact ? 2 : 4)) block.Children.Add(Text("+ " + (active.Count - (settings.Compact ? 2 : 4)) + L.T(" więcej · szczegóły"), 9, Muted));
-        SetTip(block, L.T("Otwórz listę sesji"), sessions.ErrorFor(providerName) ?? "");
+        SetTip(block, L.T("Otwórz listę sesji"), L.Display(sessions.ErrorFor(providerName) ?? ""));
         block.MouseLeftButtonUp += (_, e) => { OpenProvider(providerName, true); e.Handled = true; };
         panel.Children.Add(block);
     }

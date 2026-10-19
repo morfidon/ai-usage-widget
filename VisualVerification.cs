@@ -259,6 +259,8 @@ public static class VisualVerification
                     throw new Exception("Tray menu was not translated");
                 Capture(selected, "visual-english-compact");
                 selected.SetCompactForTest(false); await Task.Delay(80); Capture(selected, "visual-english-full");
+                var cachedError = new SessionSnapshot(new(), DateTimeOffset.Now, CodexError: "Monitor sesji Codex niedostępny · sprawdź wersję aplikacji");
+                typeof(MainWindow).GetField("sessions", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(selected, cachedError);
                 var englishDetails = selected.InsightsForTest(0); await Task.Delay(80);
                 var englishTabs = Descendants(englishDetails).OfType<TabControl>().Single();
                 if (!englishTabs.Items.OfType<TabItem>().Select(t => t.Header?.ToString())
@@ -266,6 +268,8 @@ public static class VisualVerification
                     throw new Exception("English details tabs are incomplete");
                 for (int tab = 0; tab < 5; tab++) {
                     englishTabs.SelectedIndex = tab; await Task.Delay(80);
+                    if (tab is 0 or 4 && !Descendants(englishDetails).OfType<TextBlock>().Any(t => t.Text == "Codex session monitor unavailable · check the app version"))
+                        throw new Exception("Cached session error did not follow the language selection");
                     Capture(englishDetails, "visual-english-details-" + tab);
                 }
                 LanguageChoice("Polski").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));

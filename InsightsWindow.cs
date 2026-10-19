@@ -197,7 +197,7 @@ public sealed class InsightsWindow : Window
                 .Select(s => System.IO.Path.GetFileName(s.Directory.TrimEnd('\\', '/'))).Distinct().Take(3));
             sessionBlock.Children.Add(InsightsUi.Text(waitingProjects, 12, InsightsUi.Brush("#F1C879")));
         }
-        if (sessions.ErrorFor(SelectedProvider) is string error) sessionBlock.Children.Add(InsightsUi.Text(error, 12, InsightsUi.Muted));
+        if (sessions.ErrorFor(SelectedProvider) is string error) sessionBlock.Children.Add(InsightsUi.Text(L.Display(error), 12, InsightsUi.Muted));
         sessionBlock.Children.Add(Navigate(waiting > 0 ? L.T("Sprawdź oczekujące sesje") : L.T("Otwórz sesje"), 4));
         var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition());
         var liveCard = InsightsUi.Card(sessionBlock); liveCard.Margin = new Thickness(0, 0, 6, 12);
@@ -504,7 +504,7 @@ public sealed class InsightsWindow : Window
                 if (s.Reason.Length > 0) content.Children.Add(InsightsUi.Text(L.Display(s.Reason), 12, InsightsUi.Muted));
                 sessionBody.Children.Add(InsightsUi.Card(content));
             }
-            if (rows.Count == 0) sessionBody.Children.Add(InsightsUi.Text(sessions.ErrorFor(name) ?? L.T("Brak aktywnych sesji."), 12, InsightsUi.Muted));
+            if (rows.Count == 0) sessionBody.Children.Add(InsightsUi.Text(L.Display(sessions.ErrorFor(name) ?? L.T("Brak aktywnych sesji.")), 12, InsightsUi.Muted));
         }
         sessionBody.Children.Add(InsightsUi.Text(sessions.At == DateTimeOffset.MinValue ? L.T("Oczekiwanie na pierwszy odczyt…") : L.F("Odczyt: {0:HH:mm:ss}", sessions.At.LocalDateTime), 10, InsightsUi.Muted));
     }
@@ -514,7 +514,7 @@ public sealed class InsightsWindow : Window
         var now = DateTimeOffset.Now;
         var start = now.AddDays(period.SelectedIndex == 0 ? -1 : -7);
         var rows = history.Samples.Where(s => s.Provider == (string)provider.SelectedItem && s.At >= start).ToList();
-        if (history.Error is not null) historyBody.Children.Add(InsightsUi.Text(history.Error, 12, InsightsUi.Brush("#F1C879")));
+        if (history.Error is not null) historyBody.Children.Add(InsightsUi.Text(L.Display(history.Error), 12, InsightsUi.Brush("#F1C879")));
         if (rows.Count == 0)
         {
             var empty = new StackPanel { Margin = new Thickness(8, 24, 8, 24) };
