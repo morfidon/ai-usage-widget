@@ -209,7 +209,13 @@ public static class VisualVerification
                 if (!texts.Contains("65%") || !texts.Any(t => t.Contains("pending-project"))) throw new Exception("Quota or session state did not invalidate its card");
                 main.Hide(); if (main.IsVisible) throw new Exception("Hide failed");
                 main.Restore(); if (!main.IsVisible) throw new Exception("Restore failed");
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 24, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                var selected = new MainWindow(new Settings { Compact = true, Topmost = false, EnabledProviders = new[] { "Codex" } }, true);
+                selected.Show(); await Task.Delay(100);
+                var selectedText = Descendants(selected).OfType<TextBlock>().Select(t => t.Text).ToArray();
+                if (!selectedText.Contains("Codex") || selectedText.Any(t => t is "Claude" or "Devin" or "JetBrains Air" or "Antigravity"))
+                    throw new Exception("Unselected provider cards remain visible");
+                Capture(selected, "visual-selected-codex"); selected.Close();
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 25, SelectedProviders = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

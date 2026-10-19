@@ -29,6 +29,9 @@ public static class FeatureTests
             Check(SetupDiagnostics.Classify("Codex", true, new("Codex", "", new() { new("x", "week", 20, null, 10080) }, DateTimeOffset.Now, "ok", true)).Status == "ready",
                 "A selected provider with current quota passes setup diagnostics");
             var selected = new Settings { EnabledProviders = new[] { "Codex" } };
+            Check(!TrayFormatter.Format(ProviderState.Empty("Codex"), ProviderState.Empty("Claude"), selected).Contains("Claude")
+                && TrayFormatter.Format(ProviderState.Empty("Codex"), ProviderState.Empty("Claude"), new Settings { EnabledProviders = new[] { "Devin" } }) == "AI Usage Widget",
+                "Tray summary omits unselected providers and supports other-provider-only installs");
             Check(selected.IsEnabled("codex") && !selected.IsEnabled("Claude") && new Settings().IsEnabled("Claude"),
                 "Provider selection is case insensitive and legacy settings retain all providers");
             using (var disabled = new TranscriptAnalytics(new Settings { EnabledProviders = Array.Empty<string>() }, dir, dir, dir))

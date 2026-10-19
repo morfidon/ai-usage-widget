@@ -108,7 +108,7 @@ public sealed class MainWindow : Window
         menu.Items.Add("Tryb kompaktowy / pełny", null, (_, _) => Dispatcher.BeginInvoke(ToggleCompact));
         menu.Items.Add("Historia i szczegóły", null, (_, _) => Dispatcher.BeginInvoke(OpenInsights));
         var trayProvider = new Forms.ToolStripMenuItem("Procent przy zegarze");
-        foreach (string name in new[] { "Codex", "Claude" })
+        foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
             trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
         menu.Items.Add(trayProvider);
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -215,8 +215,8 @@ public sealed class MainWindow : Window
         Item("Odśwież limity", () => _ = Refresh());
         Item("Tryb kompaktowy", ToggleCompact, true, settings.Compact);
         Item("Historia i szczegóły", OpenInsights);
-        Item("Procent przy zegarze · Codex", () => { settings.TrayProvider = "Codex"; SaveSettings(); Render(); });
-        Item("Procent przy zegarze · Claude", () => { settings.TrayProvider = "Claude"; SaveSettings(); Render(); });
+        if (settings.IsEnabled("Codex")) Item("Procent przy zegarze · Codex", () => { settings.TrayProvider = "Codex"; SaveSettings(); Render(); });
+        if (settings.IsEnabled("Claude")) Item("Procent przy zegarze · Claude", () => { settings.TrayProvider = "Claude"; SaveSettings(); Render(); });
         Item("Animacje postaci", () => { settings.AnimateMascots = !settings.AnimateMascots; SaveSettings(); Render(); }, true, settings.AnimateMascots);
         Item("Zawsze na wierzchu", TogglePin, true, settings.Topmost);
         Item("Uruchamiaj z Windows", () => { try { Startup.Set(!Startup.Enabled); } catch { System.Windows.MessageBox.Show("Nie można zmienić autostartu."); } }, true, Startup.Enabled);
@@ -227,7 +227,7 @@ public sealed class MainWindow : Window
         Item("Devin · strona limitów", () => OpenUrl("https://app.devin.ai/settings/usage"));
         Item("JetBrains Air · kredyty konta", () => OpenUrl("https://air.jetbrains.cloud"));
         Item("JetBrains Air · połącz konto", () => Process.Start(new ProcessStartInfo(
-            Path.Combine(Settings.ProjectDirectory, "Połącz JetBrains Air.cmd")) { UseShellExecute = true, WorkingDirectory = Settings.ProjectDirectory }));
+            Path.Combine(Settings.ProjectDirectory, "Connect JetBrains Air.cmd")) { UseShellExecute = true, WorkingDirectory = Settings.ProjectDirectory }));
         Item("Otwórz folder widgetu", () => Process.Start(new ProcessStartInfo(Settings.ProjectDirectory) { UseShellExecute = true }));
         menu.Items.Add(new Separator());
         Item("Ukryj przy zegarze", Hide); Item("Zakończ", Close);
@@ -409,8 +409,15 @@ public sealed class MainWindow : Window
         footer.Text = busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
             : $"Odczyt {updates.Max()!.Value.LocalDateTime:HH:mm}" + (settings.Compact ? "" : " · automatyczne odświeżanie");
         SetTip(footer, "Aktualizacja danych", string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")));
-        tray.Text = TrayFormatter.Format(codexState, claudeState);
-        var selected = settings.TrayProvider == "Claude" ? claudeState : codexState;
+        tray.Text = TrayFormatter.Format(codexState, claudeState, settings);
+        var selected = states.FirstOrDefault(s => s.Name == settings.TrayProvider && s.Name is "Codex" or "Claude")
+            ?? states.FirstOrDefault(s => s.Name is "Codex" or "Claude");
+        if (selected is null) {
+            if (trayKey != "default") { var icon = tray.Icon; tray.Icon = CreateIcon(); icon?.Dispose(); trayKey = "default"; }
+            lastPaint = DateTimeOffset.Now;
+            if (scrollOffset > 0) Dispatcher.BeginInvoke(() => providerScroll.ScrollToVerticalOffset(scrollOffset), DispatcherPriority.Loaded);
+            return;
+        }
         var shared = selected.Windows.Where(w => !w.Expired && (selected.Name != "Codex" || w.Id.StartsWith("codex:"))).ToList();
         var quota = shared.OrderBy(w => w.Remaining).FirstOrDefault();
         string value = Stale(selected) || quota is null ? "?" : $"{quota.Remaining:0}";

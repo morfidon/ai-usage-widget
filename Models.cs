@@ -158,7 +158,7 @@ public sealed class Settings
 
 public static class TrayFormatter
 {
-    public static string Format(ProviderState codex, ProviderState claude)
+    public static string Format(ProviderState codex, ProviderState claude, Settings? settings = null)
     {
         string Summary(ProviderState state)
         {
@@ -167,7 +167,8 @@ public static class TrayFormatter
             string detail = string.Join(" ", windows.Select(w => (w.Minutes == 300 ? "5h" : w.Minutes == 10080 ? "7d" : "limit") + $" {w.Remaining:0}%"));
             return state.Name + ": " + (detail.Length > 0 ? detail : "?");
         }
-        string value = "Wolne · " + Summary(codex) + " | " + Summary(claude);
+        var enabled = new[] { codex, claude }.Where(s => settings?.IsEnabled(s.Name) != false).ToArray();
+        string value = enabled.Length == 0 ? "AI Usage Widget" : "Wolne · " + string.Join(" | ", enabled.Select(Summary));
         return value[..Math.Min(63, value.Length)];
     }
 }
