@@ -132,7 +132,16 @@ public sealed class Settings
     public string TrayProvider { get; set; } = "Codex";
     public bool AnimateMascots { get; set; } = true;
     public static string ProjectDirectory => Directory.GetParent(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))!.FullName;
-    public static string DataDirectory => Path.Combine(ProjectDirectory, "data");
+    public static string DataDirectory {
+        get {
+            string layout = Path.Combine(ProjectDirectory, "install-layout.json");
+            if (!File.Exists(layout)) return Path.Combine(ProjectDirectory, "data");
+            using var doc = JsonDocument.Parse(File.ReadAllText(layout));
+            string? path = doc.RootElement.GetProperty("DataDirectory").GetString();
+            if (path is null || !Path.IsPathFullyQualified(path)) throw new IOException("Invalid installation data directory.");
+            return path;
+        }
+    }
     public static string PathName => Path.Combine(DataDirectory, "settings.json");
     public static Settings Load()
     {

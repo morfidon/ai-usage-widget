@@ -3,6 +3,11 @@ try {
     $raw = [Console]::In.ReadToEnd()
     $payload = $raw | ConvertFrom-Json
     $dataDirectory = Join-Path $PSScriptRoot 'data'
+    $layoutPath = Join-Path $PSScriptRoot 'install-layout.json'
+    if (Test-Path -LiteralPath $layoutPath) {
+        $dataDirectory = (Get-Content -LiteralPath $layoutPath -Raw | ConvertFrom-Json).DataDirectory
+        if (-not $dataDirectory -or -not [IO.Path]::IsPathRooted($dataDirectory)) { throw 'Invalid data directory.' }
+    }
     if ($payload.rate_limits) {
         [IO.Directory]::CreateDirectory($dataDirectory) | Out-Null
         # Save only quotas. Never persist prompts, transcripts, account identifiers or tokens.

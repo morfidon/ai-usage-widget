@@ -1,10 +1,11 @@
-param([switch]$KeepClaudeBridge, [switch]$OnlyClaudeBridge)
+param([switch]$KeepClaudeBridge, [switch]$OnlyClaudeBridge, [string]$DataDirectory)
 $ErrorActionPreference = 'Stop'
-$dataDirectory = Join-Path $PSScriptRoot 'data'
+. (Join-Path $PSScriptRoot 'scripts/Layout.ps1')
+if (-not $DataDirectory) { $DataDirectory = Get-WidgetDataDirectory $PSScriptRoot }
 $statePath = Join-Path $dataDirectory 'install-state.json'
 if (-not (Test-Path -LiteralPath $statePath)) { Write-Output 'No installation state; nothing to restore.'; return }
 $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$runKey = if ($state.runKey) { $state.runKey } else { 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' }
 $current = (Get-ItemProperty -LiteralPath $runKey -Name AIUsageWidget -ErrorAction SilentlyContinue).AIUsageWidget
 if (-not $OnlyClaudeBridge -and $current -eq ('"' + $state.executable + '" --startup')) { Remove-ItemProperty -LiteralPath $runKey -Name AIUsageWidget }
 if (-not $KeepClaudeBridge -and $state.claudeSettings -and (Test-Path -LiteralPath $state.claudeSettings)) {
@@ -20,4 +21,8 @@ if (-not $OnlyClaudeBridge -and (Test-Path -LiteralPath $state.shortcut)) {
     $shell = New-Object -ComObject WScript.Shell
     if ($shell.CreateShortcut($state.shortcut).TargetPath -eq $state.executable) { Remove-Item -LiteralPath $state.shortcut }
 }
-Write-Output 'Wylaczono autostart i przywrocono poprzedni pasek Claude. Widget mozna zamknac przez menu ikony przy zegarze.'
+if ($OnlyClaudeBridge) {
+    $state.claudeSettings = $null; $state.bridgeCommand = $null
+    [IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+}
+Write-Output 'Removed owned integrations. Files and history were kept. Exit the widget through its tray menu.'
