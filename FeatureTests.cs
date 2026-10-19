@@ -18,6 +18,16 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
+            var absent = SetupDiagnostics.Classify("Codex", false, null);
+            Check(absent.Status == "not_selected" && SetupDiagnostics.ExitCode(new[] { absent }) == 0,
+                "Unselected providers do not fail setup diagnostics");
+            var login = SetupDiagnostics.Classify("Claude", true, ProviderState.Empty("Claude") with { SetupStatus = "login_required" });
+            Check(login.Status == "login_required" && SetupDiagnostics.ExitCode(new[] { login }) == 3,
+                "Setup diagnostics distinguish user login from installation errors");
+            Check(SetupDiagnostics.ExitCode(new[] { login, SetupDiagnostics.Classify("Codex", true, null) }) == 2,
+                "Connection errors take precedence over pending login");
+            Check(SetupDiagnostics.Classify("Codex", true, new("Codex", "", new() { new("x", "week", 20, null, 10080) }, DateTimeOffset.Now, "ok", true)).Status == "ready",
+                "A selected provider with current quota passes setup diagnostics");
             var selected = new Settings { EnabledProviders = new[] { "Codex" } };
             Check(selected.IsEnabled("codex") && !selected.IsEnabled("Claude") && new Settings().IsEnabled("Claude"),
                 "Provider selection is case insensitive and legacy settings retain all providers");

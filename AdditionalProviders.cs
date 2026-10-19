@@ -140,13 +140,13 @@ public sealed class DevinProvider : IDisposable
             if (last is not null && DateTimeOffset.UtcNow < nextRead) return last;
             nextRead = DateTimeOffset.UtcNow.AddMinutes(2);
             string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "devin", "User", "globalStorage", "state.vscdb");
-            if (!File.Exists(path)) return last = ProviderState.Empty("Devin") with { Status = "Nie znaleziono danych aplikacji Devin" };
+            if (!File.Exists(path)) return last = ProviderState.Empty("Devin") with { Status = "Nie znaleziono danych aplikacji Devin", SetupStatus = "login_required" };
             var state = DesktopState.ReadDevin(path);
             if (!state.TryGetValue("windsurfAuthStatus", out var authText))
-                return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się w aplikacji Devin" };
+                return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się w aplikacji Devin", SetupStatus = "login_required" };
             using var auth = JsonDocument.Parse(authText);
             string? key = UsageParser.Text(auth.RootElement, "apiKey");
-            if (string.IsNullOrWhiteSpace(key)) return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się w aplikacji Devin" };
+            if (string.IsNullOrWhiteSpace(key)) return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się w aplikacji Devin", SetupStatus = "login_required" };
             string server = "https://server.self-serve.windsurf.com";
             if (state.TryGetValue("codeium.windsurf", out var configuration))
             {
@@ -168,7 +168,7 @@ public sealed class DevinProvider : IDisposable
                 ideName = "devin", ideVersion = version, extensionVersion = version, locale = "en" } }), Encoding.UTF8, "application/json");
             using var response = await http.SendAsync(request, token);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się ponownie w aplikacji Devin" };
+                return last = ProviderState.Empty("Devin") with { Status = "Zaloguj się ponownie w aplikacji Devin", SetupStatus = "login_required" };
             if (response.StatusCode == HttpStatusCode.TooManyRequests) nextRead = DateTimeOffset.UtcNow.AddMinutes(10);
             response.EnsureSuccessStatusCode();
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
@@ -208,7 +208,7 @@ public sealed class AirProvider : IDisposable
             if (last is not null && DateTimeOffset.UtcNow < nextRead) return last;
             nextRead = DateTimeOffset.UtcNow.AddMinutes(2);
             string? exe = Locate();
-            if (exe is null) return last = ProviderState.Empty("JetBrains Air") with { Status = "Brak narzędzia JetBrains Central" };
+            if (exe is null) return last = ProviderState.Empty("JetBrains Air") with { Status = "Brak narzędzia JetBrains Central", SetupStatus = "not_installed" };
             // Native Central manages its encrypted credentials and refreshes them itself.
             // This command reads quota; it neither starts the proxy nor wires any agent.
             var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true,
@@ -224,7 +224,7 @@ public sealed class AirProvider : IDisposable
             {
                 bool signedIn = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".jetbrains-central", "tokens.enc"));
                 return last = ProviderState.Empty("JetBrains Air") with { Status = signedIn
-                    ? "Brak odczytu JetBrains · ponowię połączenie" : "Dokończ logowanie JetBrains w przeglądarce" };
+                    ? "Brak odczytu JetBrains · ponowię połączenie" : "Dokończ logowanie JetBrains w przeglądarce", SetupStatus = signedIn ? "error" : "login_required" };
             }
             using var document = JsonDocument.Parse(json);
             return last = AdditionalUsageParser.Air(document.RootElement);

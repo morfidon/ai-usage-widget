@@ -36,6 +36,7 @@ public static class Program
         Directory.CreateDirectory(Settings.DataDirectory);
         if (args.Contains("--benchmark")) return PerformanceBenchmarks.Run(args);
         if (args.Contains("--self-test")) return SelfTests.Run();
+        if (args.Contains("--doctor")) return SetupDiagnostics.Run(args).GetAwaiter().GetResult();
         if (args.Contains("--diagnose")) return Diagnose().GetAwaiter().GetResult();
         if (args.Contains("--diagnose-antigravity")) return DiagnoseAntigravity().GetAwaiter().GetResult();
         if (args.Contains("--diagnose-activity")) return DiagnoseActivity(args.Contains("--full-history")).GetAwaiter().GetResult();
@@ -110,15 +111,16 @@ public static class Program
         using var air = new AirProvider();
         using var antigravity = new AntigravityProvider();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        var a = codex.Fetch(timeout.Token); var b = claude.Fetch(timeout.Token);
-        var c = devin.Fetch(timeout.Token);
-        var d = air.Fetch(timeout.Token);
-        var e = antigravity.Fetch(timeout.Token);
+        var a = settings.IsEnabled("Codex") ? codex.Fetch(timeout.Token) : Task.FromResult(ProviderState.Empty("Codex"));
+        var b = settings.IsEnabled("Claude") ? claude.Fetch(timeout.Token) : Task.FromResult<ProviderState?>(null);
+        var c = settings.IsEnabled("Devin") ? devin.Fetch(timeout.Token) : Task.FromResult(ProviderState.Empty("Devin"));
+        var d = settings.IsEnabled("JetBrains Air") ? air.Fetch(timeout.Token) : Task.FromResult(ProviderState.Empty("JetBrains Air"));
+        var e = settings.IsEnabled("Antigravity") ? antigravity.Fetch(timeout.Token) : Task.FromResult(ProviderState.Empty("Antigravity"));
         await Task.WhenAll((Task)a, (Task)b, (Task)c, (Task)d, (Task)e);
         var states = new[] { await a, await b, await c, await d, await e };
         string result = JsonSerializer.Serialize(states, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(Path.Combine(Settings.DataDirectory, "diagnostic.json"), result);
         Console.WriteLine(result);
-        return states.All(x => x?.Windows.Count > 0) ? 0 : 2;
+        return states.Where((_, i) => settings.IsEnabled(SetupDiagnostics.Providers[i])).All(x => x is { Connected: true, Windows.Count: > 0 }) ? 0 : 2;
     }
 }

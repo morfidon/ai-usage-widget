@@ -92,7 +92,8 @@ public sealed class CodexProvider : IDisposable
             DisposeProcess();
             string error = ex is OperationCanceledException ? "Brak odpowiedzi · ponowię połączenie" :
                 ex is FileNotFoundException or InvalidOperationException ? ex.Message : "Brak połączenia · spróbuję ponownie";
-            return new("Codex", "", new(), null, error, false, error);
+            return new ProviderState("Codex", "", new(), null, error, false, error) {
+                SetupStatus = ex is FileNotFoundException ? "not_installed" : error == "Zaloguj się w aplikacji Codex." ? "login_required" : "error" };
         }
         finally { gate.Release(); }
     }
@@ -144,7 +145,7 @@ public sealed class ClaudeProvider : IDisposable
             string dir = settings.ClaudeDirectory ?? Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR")
                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
             var credentialPath = Path.Combine(dir, ".credentials.json");
-            if (!File.Exists(credentialPath)) return Failure(bridge, "Otwórz Claude Code i zaloguj się");
+            if (!File.Exists(credentialPath)) return Failure(bridge, "Otwórz Claude Code i zaloguj się", "login_required");
             var oauth = await LoadOAuth(credentialPath, token);
             if (oauth.HasValue && UsageParser.Number(oauth.Value, "expiresAt") is double expiry
                 && expiry < DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 60000)
@@ -155,7 +156,7 @@ public sealed class ClaudeProvider : IDisposable
                 oauth = await LoadOAuth(credentialPath, token);
             }
             string? access = oauth.HasValue ? UsageParser.Text(oauth.Value, "accessToken") : null;
-            if (string.IsNullOrWhiteSpace(access)) return Failure(bridge, "Otwórz Claude Code i zaloguj się");
+            if (string.IsNullOrWhiteSpace(access)) return Failure(bridge, "Otwórz Claude Code i zaloguj się", "login_required");
             using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/api/oauth/usage");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access);
             request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
@@ -183,9 +184,9 @@ public sealed class ClaudeProvider : IDisposable
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch { return Failure(bridge, "Brak połączenia · czekam na Claude Code"); }
     }
-    static ProviderState Failure(ProviderState? bridge, string message) => bridge is not null
-        ? bridge with { Status = message, Connected = false, Error = message }
-        : new("Claude", "", new(), null, message, false, message);
+    static ProviderState Failure(ProviderState? bridge, string message, string? setupStatus = null) => bridge is not null
+        ? bridge with { Status = message, Connected = false, Error = message, SetupStatus = setupStatus }
+        : new ProviderState("Claude", "", new(), null, message, false, message) { SetupStatus = setupStatus };
     public void Dispose() => http.Dispose();
     static async Task<JsonElement?> LoadOAuth(string path, CancellationToken token)
     {

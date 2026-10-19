@@ -247,7 +247,7 @@ public sealed class AntigravityProvider : IDisposable
             if (last is not null && DateTimeOffset.UtcNow < nextRead) return last;
             nextRead = DateTimeOffset.UtcNow.AddMinutes(2);
             var endpoints = await Task.Run(() => AntigravityEndpoint.Find(timeout.Token), timeout.Token);
-            if (endpoints.Count == 0) return last = ProviderState.Empty("Antigravity") with { Status = "Uruchom Antigravity i zaloguj się na konto Google" };
+            if (endpoints.Count == 0) return last = ProviderState.Empty("Antigravity") with { Status = "Uruchom Antigravity i zaloguj się na konto Google", SetupStatus = "app_required" };
             foreach (var endpoint in endpoints)
                 foreach (int port in endpoint.Ports)
                     foreach (string scheme in new[] { "https", "http" })

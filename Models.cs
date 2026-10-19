@@ -52,6 +52,7 @@ public sealed record ProviderState(string Name, string Plan, List<UsageWindow> W
     string Status, bool Connected, string? Error = null)
 {
     public static ProviderState Empty(string name) => new(name, "", new(), null, "Łączenie…", false);
+    public string? SetupStatus { get; init; }
 }
 
 public static class UsageParser
