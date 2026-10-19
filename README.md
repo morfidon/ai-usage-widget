@@ -28,7 +28,10 @@ English is the default; Polish is available in Options. [Prefer still images?](#
   typing while working, waving when they need you, and breathing softly at rest.
   A text label explains each state; character animations can be switched off in Options.
 - **History behind the numbers.** Explore quota history, projects, sessions and model
-  token totals. Local token estimates remain separate from subscription percentages.
+  token totals, with an activity chart and last-hour, today, 24-hour or 7-day ranges.
+  Search and sort projects, choose 20, 50 or all results, switch to compact rows,
+  and filter live sessions by status. Local token estimates remain separate from
+  subscription percentages.
 - **A widget that stays out of the way.** Switch between compact and full views,
   check the tray percentage, and get a notification when a quota is running low.
 
