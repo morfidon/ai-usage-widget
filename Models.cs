@@ -129,6 +129,11 @@ public sealed class Settings
     // Null preserves the existing five-provider behavior on upgrades.
     public string[]? EnabledProviders { get; set; }
     public bool IsEnabled(string name) => EnabledProviders is null || EnabledProviders.Contains(name, StringComparer.OrdinalIgnoreCase);
+    public void SetProviderEnabled(string name, bool enabled)
+    {
+        if (!SetupDiagnostics.Providers.Contains(name, StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("Unknown provider", nameof(name));
+        EnabledProviders = SetupDiagnostics.Providers.Where(p => p.Equals(name, StringComparison.OrdinalIgnoreCase) ? enabled : IsEnabled(p)).ToArray();
+    }
     public string TrayProvider { get; set; } = "Codex";
     public bool AnimateMascots { get; set; } = true;
     public static string ProjectDirectory => Directory.GetParent(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))!.FullName;
@@ -145,6 +150,11 @@ public sealed class Settings
     public static string PathName => Path.Combine(DataDirectory, "settings.json");
     public static Settings Load()
     {
+        if (!File.Exists(PathName)) {
+            var firstRun = new Settings();
+            firstRun.EnabledProviders = ProviderDiscovery.Detect(firstRun);
+            return firstRun;
+        }
         try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(PathName)) ?? new(); }
         catch { return new(); }
     }

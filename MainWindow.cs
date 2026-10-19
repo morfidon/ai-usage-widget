@@ -36,6 +36,9 @@ public sealed class MainWindow : Window
     readonly AirProvider air;
     readonly AntigravityProvider antigravity;
     readonly CancellationTokenSource lifetime = new();
+    CancellationTokenSource selection = new();
+    int selectionVersion;
+    string[]? renderedProviders;
     readonly DispatcherTimer heartbeat = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly StackPanel body = new();
     readonly ScrollViewer providerScroll = new();
@@ -81,7 +84,7 @@ public sealed class MainWindow : Window
         sessionMonitor = new(settings); analytics = new(settings);
         settings.RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 30, 3600);
         codex = new(settings); claude = new(settings); devin = new(); air = new(); antigravity = new();
-        Title = "AI Usage · Codex + Claude + Devin + Air + Antigravity";
+        Title = "AI Usage Widget";
         Width = 356; SizeToContent = SizeToContent.Height;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true; Background = Brushes.Transparent;
@@ -107,6 +110,15 @@ public sealed class MainWindow : Window
         menu.Items.Add("Odśwież limity", null, (_, _) => Dispatcher.BeginInvoke(() => _ = Refresh()));
         menu.Items.Add("Tryb kompaktowy / pełny", null, (_, _) => Dispatcher.BeginInvoke(ToggleCompact));
         menu.Items.Add("Historia i szczegóły", null, (_, _) => Dispatcher.BeginInvoke(OpenInsights));
+        var providerChoices = new Forms.ToolStripMenuItem("Dostawcy");
+        foreach (string name in SetupDiagnostics.Providers) {
+            var choice = new Forms.ToolStripMenuItem(name) { CheckOnClick = true, Checked = settings.IsEnabled(name), Tag = name };
+            choice.Click += (_, _) => Dispatcher.BeginInvoke(() => SetProviderEnabled(name, choice.Checked));
+            providerChoices.DropDownItems.Add(choice);
+        }
+        providerChoices.DropDownItems.Add(new Forms.ToolStripSeparator());
+        providerChoices.DropDownItems.Add("Wybierz wykryte aplikacje", null, (_, _) => Dispatcher.BeginInvoke(() => ApplyProviderSelection(ProviderDiscovery.Detect(settings))));
+        menu.Items.Add(providerChoices);
         var trayProvider = new Forms.ToolStripMenuItem("Procent przy zegarze");
         foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
             trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
@@ -116,7 +128,15 @@ public sealed class MainWindow : Window
         startup.Click += (_, _) => { try { Startup.Set(startup.Checked); } catch { startup.Checked = Startup.Enabled; } };
         menu.Items.Add(startup);
         menu.Items.Add("Zakończ", null, (_, _) => Dispatcher.BeginInvoke(Close));
-        menu.Opening += (_, _) => startup.Checked = Startup.Enabled;
+        menu.Opening += (_, _) => {
+            startup.Checked = Startup.Enabled;
+            foreach (var item in providerChoices.DropDownItems.OfType<Forms.ToolStripMenuItem>())
+                if (item.Tag is string name) item.Checked = settings.IsEnabled(name);
+            trayProvider.DropDownItems.Clear();
+            foreach (string name in new[] { "Codex", "Claude" }.Where(settings.IsEnabled))
+                trayProvider.DropDownItems.Add(name, null, (_, _) => Dispatcher.BeginInvoke(() => { settings.TrayProvider = name; SaveSettings(); Render(); }));
+            trayProvider.Visible = trayProvider.DropDownItems.Count > 0;
+        };
         tray.ContextMenuStrip = menu;
         if (preview) SetPreviewData(); else LoadCache();
         Render();
@@ -134,7 +154,7 @@ public sealed class MainWindow : Window
         LocationChanged += (_, _) => { if (IsLoaded) { settings.Left = Left; settings.Top = Top; } };
         Closing += (_, _) =>
         {
-            heartbeat.Stop(); lifetime.Cancel();
+            heartbeat.Stop(); lifetime.Cancel(); selection.Cancel(); selection.Dispose();
             insights?.Close();
             SaveSettings(); tray.Visible = false; var icon = tray.Icon; tray.Dispose(); icon?.Dispose();
             healthMonitor.Dispose(); codex.Dispose(); claude.Dispose(); devin.Dispose(); air.Dispose(); antigravity.Dispose();
@@ -200,7 +220,7 @@ public sealed class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition()); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer = Text("Łączenie z kontami…", 10, Muted); grid.Children.Add(footer);
         var more = Text("•••", 12, Muted); Grid.SetColumn(more, 1); more.Cursor = Cursors.Hand;
-        SetTip(more, "Ustawienia", "Widok, zawsze na wierzchu i autostart Windows.");
+        SetTip(more, "Ustawienia", "Dostawcy, widok, zawsze na wierzchu i autostart Windows.");
         more.MouseLeftButtonDown += (_, _) => { ContextMenu = BuildMenu(); ContextMenu.IsOpen = true; };
         grid.Children.Add(more); return grid;
     }
@@ -215,6 +235,7 @@ public sealed class MainWindow : Window
         Item("Odśwież limity", () => _ = Refresh());
         Item("Tryb kompaktowy", ToggleCompact, true, settings.Compact);
         Item("Historia i szczegóły", OpenInsights);
+        menu.Items.Add(ProviderMenu());
         if (settings.IsEnabled("Codex")) Item("Procent przy zegarze · Codex", () => { settings.TrayProvider = "Codex"; SaveSettings(); Render(); });
         if (settings.IsEnabled("Claude")) Item("Procent przy zegarze · Claude", () => { settings.TrayProvider = "Claude"; SaveSettings(); Render(); });
         Item("Animacje postaci", () => { settings.AnimateMascots = !settings.AnimateMascots; SaveSettings(); Render(); }, true, settings.AnimateMascots);
@@ -222,16 +243,59 @@ public sealed class MainWindow : Window
         Item("Uruchamiaj z Windows", () => { try { Startup.Set(!Startup.Enabled); } catch { System.Windows.MessageBox.Show("Nie można zmienić autostartu."); } }, true, Startup.Enabled);
         menu.Items.Add(new Separator());
         Item("Ustaw w prawym dolnym rogu", () => { settings.Left = null; settings.Top = null; PlaceWindow(); SaveSettings(); });
-        Item("Claude · strona limitów", () => OpenUrl("https://claude.ai/settings/usage"));
-        Item("Codex · strona limitów", () => OpenUrl("https://chatgpt.com/codex/settings/usage"));
-        Item("Devin · strona limitów", () => OpenUrl("https://app.devin.ai/settings/usage"));
-        Item("JetBrains Air · kredyty konta", () => OpenUrl("https://air.jetbrains.cloud"));
-        Item("JetBrains Air · połącz konto", () => Process.Start(new ProcessStartInfo(
+        if (settings.IsEnabled("Claude")) Item("Claude · strona limitów", () => OpenUrl("https://claude.ai/settings/usage"));
+        if (settings.IsEnabled("Codex")) Item("Codex · strona limitów", () => OpenUrl("https://chatgpt.com/codex/settings/usage"));
+        if (settings.IsEnabled("Devin")) Item("Devin · strona limitów", () => OpenUrl("https://app.devin.ai/settings/usage"));
+        if (settings.IsEnabled("JetBrains Air")) Item("JetBrains Air · kredyty konta", () => OpenUrl("https://air.jetbrains.cloud"));
+        if (settings.IsEnabled("JetBrains Air")) Item("JetBrains Air · połącz konto", () => Process.Start(new ProcessStartInfo(
             Path.Combine(Settings.ProjectDirectory, "Connect JetBrains Air.cmd")) { UseShellExecute = true, WorkingDirectory = Settings.ProjectDirectory }));
         Item("Otwórz folder widgetu", () => Process.Start(new ProcessStartInfo(Settings.ProjectDirectory) { UseShellExecute = true }));
         menu.Items.Add(new Separator());
         Item("Ukryj przy zegarze", Hide); Item("Zakończ", Close);
         return menu;
+    }
+    MenuItem ProviderMenu()
+    {
+        var menu = new MenuItem { Header = "Dostawcy" };
+        foreach (string name in SetupDiagnostics.Providers) {
+            var choice = new MenuItem { Header = name, IsCheckable = true, IsChecked = settings.IsEnabled(name), StaysOpenOnClick = true };
+            choice.Click += (_, _) => SetProviderEnabled(name, choice.IsChecked);
+            menu.Items.Add(choice);
+        }
+        menu.Items.Add(new Separator());
+        var detect = new MenuItem { Header = "Wybierz wykryte aplikacje" };
+        detect.ToolTip = "Zastępuje obecny wybór aplikacjami znalezionymi na tym komputerze. Nie sprawdza logowania.";
+        detect.Click += (_, _) => ApplyProviderSelection(ProviderDiscovery.Detect(settings));
+        menu.Items.Add(detect);
+        return menu;
+    }
+    internal void SetProviderEnabled(string name, bool enabled)
+    {
+        var updated = new Settings { EnabledProviders = settings.EnabledProviders };
+        updated.SetProviderEnabled(name, enabled);
+        ApplyProviderSelection(updated.EnabledProviders!);
+    }
+    void ApplyProviderSelection(string[] providers)
+    {
+        var previous = settings.EnabledProviders;
+        settings.EnabledProviders = SetupDiagnostics.Providers.Where(p => providers.Contains(p, StringComparer.OrdinalIgnoreCase)).ToArray();
+        try { if (!preview) settings.Save(); }
+        catch {
+            settings.EnabledProviders = previous;
+            System.Windows.MessageBox.Show("Nie udało się zapisać wyboru dostawców. Sprawdź dostęp do katalogu danych.", "AI Usage Widget");
+            return;
+        }
+        selectionVersion++;
+        selection.Cancel(); selection.Dispose(); selection = new();
+        sessions = sessions with { Sessions = sessions.Sessions.Where(s => settings.IsEnabled(s.Provider)).ToList() };
+        analysis = analysis with { Entries = analysis.Entries.Where(e => settings.IsEnabled(e.Provider)).ToList(),
+            Tools = analysis.Tools.Where(e => settings.IsEnabled(e.Provider)).ToList() };
+        insights?.Close();
+        ContextMenu = BuildMenu();
+        lastFetch = lastActivity = lastAnalytics = lastHealth = DateTimeOffset.MinValue;
+        Render();
+        if (!preview) { SaveCache(); _ = Refresh(); _ = RefreshActivity(); _ = RefreshAnalytics(); _ = RefreshHealth(); }
+        Dispatcher.BeginInvoke(ClampPosition, DispatcherPriority.Loaded);
     }
     static void OpenUrl(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     void TogglePin() { settings.Topmost = !settings.Topmost; Topmost = settings.Topmost; if (insights is not null) insights.Topmost = Topmost; SaveSettings(); Render(); }
@@ -256,7 +320,7 @@ public sealed class MainWindow : Window
     void OpenInsights()
     {
         if (insights is not null) { insights.Show(); insights.Activate(); return; }
-        insights = new InsightsWindow(history, !preview) { Owner = this, Topmost = Topmost };
+        insights = new InsightsWindow(history, !preview, enabledProviders: settings.EnabledProviders) { Owner = this, Topmost = Topmost };
         insights.UpdateDetails(analysis, sessions);
         insights.UpdateQuotas(codexState, claudeState);
         insights.Closed += (_, _) => insights = null;
@@ -302,38 +366,45 @@ public sealed class MainWindow : Window
     async Task RefreshActivity()
     {
         if (activityBusy) return; activityBusy = true;
+        int version = selectionVersion;
+        using var read = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, selection.Token);
         try
         {
-            var next = await sessionMonitor.Read(lifetime.Token);
-            lifetime.Token.ThrowIfCancellationRequested();
+            var next = await sessionMonitor.Read(read.Token);
+            read.Token.ThrowIfCancellationRequested();
+            if (version != selectionVersion) return;
             foreach (var name in new[] { "Codex", "Claude" })
                 if (next.ErrorFor(name) is null && sessions.Sessions.Any(s => s.Provider == name && s.State == "working")
                     && !next.Sessions.Any(s => s.Provider == name && s.State == "working")) finishedUntil[name] = DateTimeOffset.Now.AddSeconds(15);
             sessions = next; insights?.UpdateDetails(analysis, sessions); Render();
         }
         catch (OperationCanceledException) { }
-        catch { sessions = new(new(), DateTimeOffset.Now, "Brak odczytu sesji", "Brak odczytu sesji"); Render(); }
-        finally { lastActivity = DateTimeOffset.Now; activityBusy = false; }
+        catch { if (version == selectionVersion) { sessions = new(new(), DateTimeOffset.Now, "Brak odczytu sesji", "Brak odczytu sesji"); Render(); } }
+        finally { lastActivity = version == selectionVersion ? DateTimeOffset.Now : DateTimeOffset.MinValue; activityBusy = false; }
     }
     async Task RefreshAnalytics()
     {
         if (analyticsBusy) return; analyticsBusy = true;
-        try { var next = await Task.Run(() => analytics.Scan(lifetime.Token), lifetime.Token); lifetime.Token.ThrowIfCancellationRequested(); analysis = next; insights?.UpdateDetails(analysis, sessions); }
+        int version = selectionVersion;
+        using var read = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, selection.Token);
+        try { var next = await Task.Run(() => analytics.Scan(read.Token), read.Token); read.Token.ThrowIfCancellationRequested(); if (version != selectionVersion) return; analysis = next; insights?.UpdateDetails(analysis, sessions); }
         catch (OperationCanceledException) { }
         catch { analysis = analysis with { Loading = false, Skipped = analysis.Skipped + 1 }; insights?.UpdateDetails(analysis, sessions); }
-        finally { lastAnalytics = DateTimeOffset.Now; analyticsBusy = false; }
+        finally { lastAnalytics = version == selectionVersion ? DateTimeOffset.Now : DateTimeOffset.MinValue; analyticsBusy = false; }
     }
     async Task RefreshHealth()
     {
         if (healthBusy) return; healthBusy = true;
+        int version = selectionVersion;
+        using var read = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, selection.Token);
         try
         {
-            var a = settings.IsEnabled("Codex") ? healthMonitor.Read("Codex", lifetime.Token) : Task.FromResult(ServiceHealth.Empty("Codex"));
-            var b = settings.IsEnabled("Claude") ? healthMonitor.Read("Claude", lifetime.Token) : Task.FromResult(ServiceHealth.Empty("Claude"));
-            await Task.WhenAll(a, b); lifetime.Token.ThrowIfCancellationRequested(); codexHealth = await a; claudeHealth = await b; Render();
+            var a = settings.IsEnabled("Codex") ? healthMonitor.Read("Codex", read.Token) : Task.FromResult(ServiceHealth.Empty("Codex"));
+            var b = settings.IsEnabled("Claude") ? healthMonitor.Read("Claude", read.Token) : Task.FromResult(ServiceHealth.Empty("Claude"));
+            await Task.WhenAll(a, b); read.Token.ThrowIfCancellationRequested(); if (version != selectionVersion) return; codexHealth = await a; claudeHealth = await b; Render();
         }
         catch (OperationCanceledException) { }
-        finally { healthBusy = false; lastHealth = DateTimeOffset.Now; }
+        finally { healthBusy = false; lastHealth = version == selectionVersion ? DateTimeOffset.Now : DateTimeOffset.MinValue; }
     }
     void LinkHealth(FrameworkElement target, string name)
     {
@@ -394,6 +465,17 @@ public sealed class MainWindow : Window
     void Render()
     {
         double scrollOffset = providerScroll.VerticalOffset;
+        var enabled = SetupDiagnostics.Providers.Where(settings.IsEnabled).ToArray();
+        if (renderedProviders is null || !renderedProviders.SequenceEqual(enabled)) {
+            body.Children.Clear(); cards.Clear(); renderedProviders = enabled;
+            if (enabled.Length == 0) {
+                var empty = new StackPanel { Margin = new Thickness(8, 8, 8, 12) };
+                empty.Children.Add(Text("Wybierz dostawców", 15, weight: FontWeights.SemiBold));
+                var explanation = Text("W menu ••• → Dostawcy zaznacz konta, których chcesz używać. Możesz też wybrać wykryte aplikacje.", 12, Muted);
+                explanation.TextWrapping = TextWrapping.Wrap; explanation.Margin = new Thickness(0, 10, 0, 0); empty.Children.Add(explanation);
+                body.Children.Add(empty);
+            }
+        }
         pinButton.Foreground = settings.Topmost ? new SolidColorBrush(Mint) : Muted;
         pinButton.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
         brandSubtitle.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
@@ -406,7 +488,7 @@ public sealed class MainWindow : Window
         var states = new[] { codexState, claudeState, devinState, airState, antigravityState }.Where(s => settings.IsEnabled(s.Name)).ToArray();
         var updates = states.Select(s => s.Updated).Where(d => d.HasValue).ToList();
         footer.FontSize = settings.Compact ? 9 : 10;
-        footer.Text = busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
+        footer.Text = enabled.Length == 0 ? "Brak wybranych dostawców" : busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
             : $"Odczyt {updates.Max()!.Value.LocalDateTime:HH:mm}" + (settings.Compact ? "" : " · automatyczne odświeżanie");
         SetTip(footer, "Aktualizacja danych", string.Join("\n", states.Select(s => $"{s.Name}: {UpdatedText(s)}")));
         tray.Text = TrayFormatter.Format(codexState, claudeState, settings);
@@ -695,18 +777,22 @@ public sealed class MainWindow : Window
     {
         if (busy || lifetime.IsCancellationRequested) return;
         busy = true; refreshButton.IsEnabled = false; Render();
+        int version = selectionVersion;
+        using var read = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, selection.Token);
         try
         {
             async Task Codex()
             {
                 if (!settings.IsEnabled("Codex")) return;
-                var state = await codex.Fetch(lifetime.Token);
+                var state = await codex.Fetch(read.Token);
+                read.Token.ThrowIfCancellationRequested();
                 codexState = Merge(codexState, state); Alert(codexState); Render();
             }
             async Task Claude()
             {
                 if (!settings.IsEnabled("Claude")) return;
-                var state = await claude.Fetch(lifetime.Token);
+                var state = await claude.Fetch(read.Token);
+                read.Token.ThrowIfCancellationRequested();
                 if (state is not null && (!claudeState.Updated.HasValue || !state.Updated.HasValue || state.Updated >= claudeState.Updated))
                     claudeState = Merge(claudeState, state);
                 Alert(claudeState); Render();
@@ -714,22 +800,25 @@ public sealed class MainWindow : Window
             async Task Devin()
             {
                 if (!settings.IsEnabled("Devin")) return;
-                devinState = Merge(devinState, await devin.Fetch(lifetime.Token)); Alert(devinState); Render();
+                var state = await devin.Fetch(read.Token); read.Token.ThrowIfCancellationRequested();
+                devinState = Merge(devinState, state); Alert(devinState); Render();
             }
             async Task Air()
             {
                 if (!settings.IsEnabled("JetBrains Air")) return;
-                airState = Merge(airState, await air.Fetch(lifetime.Token)); Alert(airState); Render();
+                var state = await air.Fetch(read.Token); read.Token.ThrowIfCancellationRequested();
+                airState = Merge(airState, state); Alert(airState); Render();
             }
             async Task Antigravity()
             {
                 if (!settings.IsEnabled("Antigravity")) return;
-                antigravityState = Merge(antigravityState, await antigravity.Fetch(lifetime.Token)); Alert(antigravityState); Render();
+                var state = await antigravity.Fetch(read.Token); read.Token.ThrowIfCancellationRequested();
+                antigravityState = Merge(antigravityState, state); Alert(antigravityState); Render();
             }
             await Task.WhenAll(Codex(), Claude(), Antigravity(), Devin(), Air()); SaveCache();
         }
         catch (OperationCanceledException) { }
-        finally { busy = false; lastFetch = DateTimeOffset.Now; if (!lifetime.IsCancellationRequested) { refreshButton.IsEnabled = true; Render(); } }
+        finally { busy = false; lastFetch = version == selectionVersion ? DateTimeOffset.Now : DateTimeOffset.MinValue; if (!lifetime.IsCancellationRequested) { refreshButton.IsEnabled = true; Render(); } }
     }
     static ProviderState Merge(ProviderState old, ProviderState next) => !next.Connected && next.Windows.Count == 0 && old.Windows.Count > 0
         ? next with { Windows = old.Windows, Updated = old.Updated, Plan = old.Plan } : next;

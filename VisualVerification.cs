@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -214,8 +215,38 @@ public static class VisualVerification
                 var selectedText = Descendants(selected).OfType<TextBlock>().Select(t => t.Text).ToArray();
                 if (!selectedText.Contains("Codex") || selectedText.Any(t => t is "Claude" or "Devin" or "JetBrains Air" or "Antigravity"))
                     throw new Exception("Unselected provider cards remain visible");
-                Capture(selected, "visual-selected-codex"); selected.Close();
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 25, SelectedProviders = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                Capture(selected, "visual-selected-codex");
+                Descendants(selected).OfType<Button>().First(b => AutomationProperties.GetHelpText(b) == "Historia limitów i szczegóły")
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var selectedInsights = Application.Current.Windows.OfType<InsightsWindow>().Single(w => ReferenceEquals(w.Owner, selected));
+                var selectedFilter = Descendants(selectedInsights).OfType<ComboBox>().Single(c => AutomationProperties.GetName(c) == "Dostawca");
+                if (selectedFilter.Items.Count != 1 || selectedFilter.Items[0].ToString() != "Codex") throw new Exception("Insights exposes a hidden provider");
+                selectedInsights.Close();
+                void Choose(string name, bool enabled) {
+                    var providerMenu = selected.ContextMenu.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == "Dostawcy");
+                    var item = providerMenu.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == name);
+                    item.IsChecked = enabled; item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                }
+                Choose("Codex", false); await Task.Delay(80);
+                selectedText = Descendants(selected).OfType<TextBlock>().Select(t => t.Text).ToArray();
+                if (!selectedText.Contains("Wybierz dostawców") || selectedText.Contains("Codex")) throw new Exception("Empty provider choice has no onboarding or leaves an old card");
+                Capture(selected, "visual-provider-empty");
+                Choose("Claude", true); Choose("Codex", true); await Task.Delay(80);
+                selectedText = Descendants(selected).OfType<TextBlock>().Select(t => t.Text).Where(t => SetupDiagnostics.Providers.Contains(t)).ToArray();
+                if (!selectedText.SequenceEqual(new[] { "Codex", "Claude" })) throw new Exception("Live provider toggles lose stable order or reused cards");
+                var selectedCodex = (ProviderState)typeof(MainWindow).GetField("codexState", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(selected)!;
+                typeof(MainWindow).GetField("codexState", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(selected, selectedCodex with { Connected = false, Status = "Brak połączenia" });
+                selected.SetCompactForTest(true);
+                selected.UpdateLayout(); await Task.Delay(80);
+                if (!Descendants(selected).OfType<TextBlock>().Any(t => t.Text == "Codex")) throw new Exception("Temporary failure hides a selected provider");
+                Capture(selected, "visual-provider-multiple");
+                var selectedTray = (System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(selected)!;
+                var trayChoices = selectedTray.ContextMenuStrip!.Items.OfType<System.Windows.Forms.ToolStripMenuItem>().Single(i => i.Text == "Dostawcy");
+                var trayClaude = trayChoices.DropDownItems.OfType<System.Windows.Forms.ToolStripMenuItem>().Single(i => i.Text == "Claude");
+                trayClaude.Checked = true; trayClaude.PerformClick(); await Task.Delay(80);
+                if (Descendants(selected).OfType<TextBlock>().Any(t => t.Text == "Claude")) throw new Exception("Tray provider toggle does not hide its card");
+                selected.Close();
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 27, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }

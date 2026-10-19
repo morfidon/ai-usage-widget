@@ -81,12 +81,18 @@ public sealed class InsightsWindow : Window
         return view;
     }
     public InsightsWindow(UsageHistory history, bool allowSessionTitles = true, Func<string, string?>? openCodexSession = null,
-        Func<string, string?>? openClaudeSession = null)
+        Func<string, string?>? openClaudeSession = null, IEnumerable<string>? enabledProviders = null)
     {
         this.allowSessionTitles = allowSessionTitles;
         this.openCodexSession = openCodexSession ?? CodexNavigation.Open;
         this.openClaudeSession = openClaudeSession ?? ClaudeNavigation.Open;
         this.history = history;
+        if (enabledProviders is not null) {
+            provider.Items.Clear();
+            foreach (string name in new[] { "Codex", "Claude" }.Where(p => enabledProviders.Contains(p, StringComparer.OrdinalIgnoreCase))) provider.Items.Add(name);
+            if (provider.Items.Count == 0) { provider.Items.Add("Brak Codex / Claude"); provider.IsEnabled = false; }
+            provider.SelectedIndex = 0;
+        }
         Title = "AI Usage · szczegóły"; Width = 820; Height = 760; MinWidth = 620; MinHeight = 440;
         MaxHeight = SystemParameters.WorkArea.Height; MaxWidth = SystemParameters.WorkArea.Width;
         Background = InsightsUi.Brush("#141B24"); Foreground = InsightsUi.Ink;
@@ -123,7 +129,7 @@ public sealed class InsightsWindow : Window
     }
     public void SelectProvider(string name, bool overview = true)
     {
-        if (name is not ("Codex" or "Claude")) return;
+        if (name is not ("Codex" or "Claude") || !provider.Items.Contains(name)) return;
         provider.SelectedItem = name;
         if (overview) tabs.SelectedIndex = 0;
         RefreshSelectedDetails();

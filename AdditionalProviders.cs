@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -195,7 +196,9 @@ public sealed class AirProvider : IDisposable
         string bundled = Path.Combine(Settings.ProjectDirectory, "tools", "central", "central.exe");
         if (File.Exists(bundled)) return bundled;
         string installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "central.exe");
-        return File.Exists(installed) ? installed : null;
+        if (File.Exists(installed)) return installed;
+        return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+            .Select(d => Path.Combine(d.Trim('"'), "central.exe")).FirstOrDefault(File.Exists);
     }
     public async Task<ProviderState> Fetch(CancellationToken outer)
     {

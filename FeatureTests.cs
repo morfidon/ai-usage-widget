@@ -18,6 +18,22 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
+            string discoveryRoot = Path.Combine(dir, "discovery");
+            Directory.CreateDirectory(discoveryRoot);
+            string[] Detect() => ProviderDiscovery.Detect(new Settings(), discoveryRoot, discoveryRoot, discoveryRoot, "", discoveryRoot);
+            Check(Detect().Length == 0, "Fresh machine detection does not invent provider installations");
+            string native = Path.Combine(discoveryRoot, ".local", "bin"); Directory.CreateDirectory(native);
+            File.WriteAllText(Path.Combine(native, "claude.exe"), "fixture");
+            string codexBin = Path.Combine(discoveryRoot, "OpenAI", "Codex", "bin", "version"); Directory.CreateDirectory(codexBin);
+            File.WriteAllText(Path.Combine(codexBin, "codex.exe"), "fixture");
+            Check(Detect().SequenceEqual(new[] { "Codex", "Claude" }), "Installed clients are detected in stable order without requiring account login");
+            var toggled = new Settings(); toggled.SetProviderEnabled("Claude", false);
+            Check(!toggled.IsEnabled("Claude") && toggled.IsEnabled("Codex"), "A manual hide preserves the other legacy providers");
+            foreach (string name in SetupDiagnostics.Providers) toggled.SetProviderEnabled(name, false);
+            var restoredSelection = JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(toggled))!;
+            Check(restoredSelection.EnabledProviders!.Length == 0 && !restoredSelection.IsEnabled("Codex"), "An intentionally empty provider selection survives restart");
+            restoredSelection.SetProviderEnabled("cLaUdE", true);
+            Check(restoredSelection.EnabledProviders.SequenceEqual(new[] { "Claude" }), "Hidden providers can be re-enabled with canonical names");
             var absent = SetupDiagnostics.Classify("Codex", false, null);
             Check(absent.Status == "not_selected" && SetupDiagnostics.ExitCode(new[] { absent }) == 0,
                 "Unselected providers do not fail setup diagnostics");
@@ -110,6 +126,14 @@ public static class FeatureTests
             string ClaudeLine(long output) => JsonSerializer.Serialize(new { type = "assistant", timestamp = stamp, cwd = "C:/project", sessionId = "session", message = new { id = "response", model = "claude-test", usage = new { input_tokens = 10, cache_read_input_tokens = 100, cache_creation_input_tokens = 20, output_tokens = output }, content = new[] { new { type = "tool_use", id = "tool", name = "mcp__example__read" } } } });
             File.WriteAllText(Path.Combine(cp, "one.jsonl"), ClaudeLine(2) + "\n" + ClaudeLine(8) + "\n");
             File.WriteAllText(Path.Combine(cp, "copy.jsonl"), ClaudeLine(8) + "\n");
+            var switchable = new Settings { EnabledProviders = new[] { "Claude" } };
+            using (var switchingAnalytics = new TranscriptAnalytics(switchable, cp, xp, ap)) {
+                Check(switchingAnalytics.Scan(CancellationToken.None).Entries.Count == 1, "Selected provider transcripts are indexed");
+                switchable.SetProviderEnabled("Claude", false);
+                Check(switchingAnalytics.Scan(CancellationToken.None).Entries.Count == 0, "Hiding a provider removes its live analytics without a restart");
+                switchable.SetProviderEnabled("Claude", true);
+                Check(switchingAnalytics.Scan(CancellationToken.None).Entries.Count == 1, "Re-enabling a provider resumes transcript indexing");
+            }
             var codexUsage = new { input_tokens = 80, cached_input_tokens = 30, output_tokens = 10 };
             string codexLine = JsonSerializer.Serialize(new { type = "token_usage_record", timestamp = stamp, payload = new { response_id = "r1", usage = codexUsage } });
             File.WriteAllText(Path.Combine(xp, "one.jsonl"), codexLine + "\n" + codexLine + "\n");

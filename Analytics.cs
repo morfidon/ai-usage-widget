@@ -100,15 +100,14 @@ public sealed class TranscriptAnalytics : IDisposable
         this.settings = settings;
         sources = new[] { (claudeProjects ?? Path.Combine(LocalPaths.Claude(settings), "projects"), "Claude"),
             (codexSessions ?? Path.Combine(LocalPaths.Codex, "sessions"), "Codex"),
-            (codexArchives ?? Path.Combine(LocalPaths.Codex, "archived_sessions"), "Codex") }
-            .Where(source => settings.IsEnabled(source.Item2)).ToArray();
+            (codexArchives ?? Path.Combine(LocalPaths.Codex, "archived_sessions"), "Codex") };
     }
     public AnalyticsSnapshot Scan(CancellationToken token, DateTimeOffset? nowOverride = null)
     {
         var now = nowOverride ?? DateTimeOffset.UtcNow; var since = now.AddDays(-7);
         long budget = 128_000_000; bool more = false, changed = false; int skipped = 0;
         var candidates = new List<(string Path, string Provider, DateTime Modified, long Length)>();
-        foreach (var source in sources)
+        foreach (var source in sources.Where(s => settings.IsEnabled(s.Provider)))
         {
             try
             {
