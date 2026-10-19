@@ -1,0 +1,128 @@
+using System;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using AIUsageWidget;
+
+// Documentation exporter only: the real WPF views, always using preview fixtures.
+// Compiled into .verify by export-readme-media.ps1, never into the shipped widget.
+public static class ReadmeMedia
+{
+    static string output = "";
+    static readonly Brush Background = Brush("#10151D"), Ink = Brush("#EDF2F7"), Muted = Brush("#A9B7C8"), Accent = Brush("#7CB8FF");
+    static Brush Brush(string value) => (Brush)new BrushConverter().ConvertFromString(value)!;
+    static System.Collections.Generic.IEnumerable<DependencyObject> Children(DependencyObject root) {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) {
+            var child = VisualTreeHelper.GetChild(root, i); yield return child;
+            foreach (var nested in Children(child)) yield return nested;
+        }
+    }
+    static BitmapSource Snapshot(FrameworkElement element, double scale = 1.5) {
+        element.UpdateLayout();
+        Brush? background = null;
+        Thickness padding = default;
+        // WPF renders client content, not the native title bar. Capture the content's
+        // own bounds to avoid a transparent strip from the non-client window area.
+        if (element is Window window && window.WindowStyle != WindowStyle.None && window.Content is FrameworkElement content) {
+            element = content; background = window.Background; padding = content.Margin;
+        }
+        double width = element.ActualWidth + padding.Left + padding.Right;
+        double height = element.ActualHeight + padding.Top + padding.Bottom;
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width * scale),
+            (int)Math.Ceiling(height * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen()) {
+            var bounds = new Rect(0, 0, width, height);
+            if (background is not null) dc.DrawRectangle(background, null, bounds);
+            dc.DrawRectangle(new VisualBrush(element) { Stretch = Stretch.Fill }, null,
+                new Rect(padding.Left, padding.Top, element.ActualWidth, element.ActualHeight));
+        }
+        bitmap.Render(visual); return bitmap;
+    }
+    static void Save(BitmapSource bitmap, string file) {
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(output, file)); encoder.Save(stream);
+    }
+    static void Label(DrawingContext dc, string value, double x, double y, double size, Brush color, bool bold = false) {
+        var text = new FormattedText(value, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+            new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, bold ? FontWeights.SemiBold : FontWeights.Normal, FontStretches.Normal),
+            size, color, 1);
+        dc.DrawText(text, new Point(x, y));
+    }
+    static void Frame(FrameworkElement view, int number, int stage) {
+        // Capture actual mascot rendering at successive phases, independent of desktop animation preferences.
+        foreach (var mascot in Children(view).OfType<MascotView>()) {
+            ((System.Windows.Threading.DispatcherTimer)typeof(MascotView).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(mascot)!).Stop();
+            typeof(MascotView).GetField("phase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(mascot, number / 6.0);
+            mascot.InvalidateVisual();
+        }
+        var snapshot = Snapshot(view);
+        double viewWidth = snapshot.PixelWidth / 1.5, viewHeight = snapshot.PixelHeight / 1.5;
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen()) {
+            dc.DrawRectangle(Background, null, new Rect(0, 0, 940, 720));
+            Label(dc, "AI USAGE WIDGET", 36, 25, 15, Ink, true);
+            Label(dc, "Sample data  /  Polish UI", 684, 27, 12, Muted);
+            if (stage < 2) {
+                double scale = Math.Min(1, 615 / viewHeight);
+                dc.DrawImage(snapshot, new Rect(26, 79, viewWidth * scale, viewHeight * scale));
+                Label(dc, stage == 0 ? "01 / REMAINING LIMITS" : "02 / YOUR PROVIDERS", 458, 158, 13, Accent, true);
+                Label(dc, stage == 0 ? "Know when\nyou can work." : "Keep only\nyour tools.", 455, 201, 42, Ink, true);
+                Label(dc, stage == 0 ? "Five-hour and weekly limits.\nActual reset times.\nActive sessions at a glance."
+                    : "Choose providers from the menu.\nNo restart.\nNo extra accounts required.", 458, 344, 18, Muted);
+                Label(dc, "No model prompts sent to check limits.", 458, 524, 14, Muted);
+            } else {
+                Label(dc, "03 / SEE THE HISTORY BEHIND THE NUMBER", 40, 71, 13, Accent, true);
+                double scale = Math.Min(860 / viewWidth, 550 / viewHeight);
+                dc.DrawImage(snapshot, new Rect(40, 112, viewWidth * scale, viewHeight * scale));
+                Label(dc, "Quota history  /  projects  /  models  /  sessions", 40, 680, 14, Muted);
+            }
+        }
+        var canvas = new RenderTargetBitmap(940, 720, 96, 96, PixelFormats.Pbgra32);
+        canvas.Render(visual); Save(canvas, "frames/frame-" + number.ToString("000") + ".png");
+        if (number == 0) Save(canvas, "overview.png");
+    }
+    static void Toggle(MainWindow window, string name, bool enabled) {
+        var providers = window.ContextMenu.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == "Dostawcy");
+        var choice = providers.Items.OfType<MenuItem>().Single(i => i.Header?.ToString() == name);
+        choice.IsChecked = enabled; choice.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+    }
+    [STAThread]
+    public static int Main(string[] args) {
+        output = Path.GetFullPath(args[0]); Directory.CreateDirectory(Path.Combine(output, "frames"));
+        Directory.CreateDirectory(Settings.DataDirectory);
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var main = new MainWindow(new Settings { Compact = true, Topmost = false, AnimateMascots = true,
+            EnabledProviders = new[] { "Codex", "Claude" }, Left = 20, Top = 20 }, preview: true);
+        int exit = 0;
+        main.Loaded += async (_, _) => {
+            try {
+                await Task.Delay(200);
+                Save(Snapshot(main), "widget.png");
+                for (int frame = 0; frame < 24; frame++) { Frame(main, frame, 0); await Task.Delay(12); }
+                Toggle(main, "Claude", false); await Task.Delay(100);
+                Save(Snapshot(main), "one-provider.png");
+                for (int frame = 24; frame < 42; frame++) { Frame(main, frame, 1); await Task.Delay(12); }
+                var history = Children(main).OfType<Button>().Single(b => AutomationProperties.GetHelpText(b) == "Historia limitów i szczegóły");
+                history.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(100);
+                var details = Application.Current.Windows.OfType<InsightsWindow>().Single(w => ReferenceEquals(w.Owner, main));
+                details.Width = 820; details.Height = 550;
+                var tabs = Children(details).OfType<TabControl>().Single(); tabs.SelectedIndex = 1;
+                await Task.Delay(100); Save(Snapshot(details), "history.png");
+                for (int frame = 42; frame < 66; frame++) { Frame(details, frame, 2); await Task.Delay(12); }
+                tabs.SelectedIndex = 2; await Task.Delay(80); Save(Snapshot(details), "projects.png");
+                details.Close();
+                Console.WriteLine("Exported 66 WPF frames and 5 PNGs using preview fixtures only.");
+            } catch (Exception e) { Console.Error.WriteLine(e); exit = 1; }
+            finally { main.Close(); app.Shutdown(); }
+        };
+        main.Show(); app.Run(); return exit;
+    }
+}
