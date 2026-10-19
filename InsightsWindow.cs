@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Automation;
 using System.Threading.Tasks;
@@ -16,8 +17,12 @@ public static class InsightsUi
     public static Brush Brush(string hex) { var b = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!; b.Freeze(); return b; }
     public static readonly Brush Ink = Brush("#EDF2F7"), Muted = Brush("#ACB8C8"), Surface = Brush("#1D2632"), Line = Brush("#344153");
     public static readonly Color Blue = Color.FromRgb(126, 184, 250), Purple = Color.FromRgb(232, 175, 143);
-    public static TextBlock Text(string text, double size = 12, Brush? brush = null) => new()
-    { Text = text, FontSize = size, Foreground = brush ?? Ink, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 6) };
+    public static TextBlock Text(string text, double size = 12, Brush? brush = null)
+    {
+        var view = new TextBlock { Text = text, FontSize = size, Foreground = brush ?? Ink, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 6) };
+        Typography.SetNumeralAlignment(view, FontNumeralAlignment.Tabular);
+        return view;
+    }
     public static ComboBox Choice(IEnumerable<string> values)
     {
         var c = new ComboBox { MinWidth = 130, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(8, 5, 8, 5), FontSize = 13 };
@@ -28,12 +33,12 @@ public static class InsightsUi
         Padding = new Thickness(16), Margin = new Thickness(0, 0, 0, 12), BorderBrush = Line, BorderThickness = new Thickness(1) };
     public static FrameworkElement Metric(string label, string value)
     {
-        var p = new StackPanel { Margin = new Thickness(0, 0, 22, 0) };
-        p.Children.Add(Text(label, 11, Muted)); var number = Text(value, 24); number.FontWeight = FontWeights.SemiBold; p.Children.Add(number); return p;
+        var p = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        p.Children.Add(Text(label, 12, Muted)); var number = Text(value, 24); number.FontWeight = FontWeights.SemiBold; p.Children.Add(number); return p;
     }
     public static FrameworkElement Metrics(params (string Label, string Value)[] values)
     {
-        var p = new WrapPanel(); foreach (var (label, value) in values) p.Children.Add(Metric(label, value)); return p;
+        var p = new System.Windows.Controls.Primitives.UniformGrid { Columns = Math.Max(1, values.Length) }; foreach (var (label, value) in values) p.Children.Add(Metric(label, value)); return p;
     }
     public static Expander Details(string label, UIElement content) => new() { Header = label, Content = content,
         Foreground = Muted, FontSize = 12, Margin = new Thickness(0, 8, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
@@ -109,6 +114,38 @@ public sealed class InsightsWindow : Window
         UseLayoutRounding = true;
         FontFamily = new FontFamily("Segoe UI"); WindowStartupLocation = WindowStartupLocation.CenterOwner;
         WidgetTheme.Apply(this);
+        Resources.MergedDictionaries.Add((ResourceDictionary)System.Windows.Markup.XamlReader.Parse("""
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style TargetType="TextBox">
+    <Setter Property="CaretBrush" Value="#EDF2F7"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+      <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}">
+        <ScrollViewer x:Name="PART_ContentHost"/>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="#7EB8FA"/></Trigger>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="#263343"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="CheckBox">
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+      <Border Background="Transparent" Padding="2,3"><StackPanel Orientation="Horizontal">
+        <Border x:Name="Box" Width="18" Height="18" Background="#1D2632" BorderBrush="#62748C" BorderThickness="1" CornerRadius="4" Margin="0,0,7,0">
+          <TextBlock x:Name="Tick" Text="✓" Foreground="#141B24" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+        </Border>
+        <ContentPresenter VerticalAlignment="Center"/>
+      </StackPanel></Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Tick" Property="Visibility" Value="Visible"/><Setter TargetName="Box" Property="Background" Value="#7EB8FA"/></Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="#FFFFFF"/><Setter TargetName="Box" Property="BorderThickness" Value="2"/></Trigger>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="#7EB8FA"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+</ResourceDictionary>
+"""));
         var root = new DockPanel { Margin = new Thickness(22) }; Content = root;
         var title = InsightsUi.Text(L.T("Aktywność"), 24); title.FontWeight = FontWeights.SemiBold;
         DockPanel.SetDock(title, Dock.Top); root.Children.Add(title);
@@ -122,8 +159,13 @@ public sealed class InsightsWindow : Window
         AutomationProperties.SetName(projectSort, L.T("Sortowanie projektów"));
         AutomationProperties.SetName(projectLimit, L.T("Liczba projektów"));
         AutomationProperties.SetName(sessionState, L.T("Stan sesji"));
-        projectOptions.Children.Add(InsightsUi.Text(L.T("Szukaj projektu"), 12, InsightsUi.Muted));
-        projectOptions.Children.Add(projectSearch); projectOptions.Children.Add(projectSort);
+        var searchBox = new Grid();
+        searchBox.Children.Add(projectSearch);
+        var placeholder = InsightsUi.Text(L.T("Szukaj projektu"), 12, InsightsUi.Muted);
+        placeholder.Margin = new Thickness(10, 7, 18, 10); placeholder.IsHitTestVisible = false;
+        searchBox.Children.Add(placeholder);
+        projectSearch.TextChanged += (_, _) => placeholder.Visibility = projectSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        projectOptions.Children.Add(searchBox); projectOptions.Children.Add(projectSort);
         projectOptions.Children.Add(projectLimit); projectOptions.Children.Add(compactProjects);
         liveOptions.Children.Add(sessionState);
         DockPanel.SetDock(scopeNote, Dock.Top); root.Children.Add(scopeNote);
@@ -187,6 +229,7 @@ public sealed class InsightsWindow : Window
         projectOptions.Visibility = tabs.SelectedIndex == 2 && selectedProject is null ? Visibility.Visible : Visibility.Collapsed;
         liveOptions.Visibility = tabs.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
         period.IsEnabled = tabs.SelectedIndex != 4;
+        period.Opacity = period.IsEnabled ? 1 : .4;
         scopeNote.Text = L.T(tabs.SelectedIndex == 4 ? "Stan na żywo · niezależny od okresu statystyk" : tabs.SelectedIndex == 1 ? "Limity konta · odczyty dostawcy, nie tokeny" : "Tokeny lokalne · nie oznaczają kosztu ani procentu abonamentu");
         if (tabs.SelectedIndex == 0 && overviewDirty) RefreshOverview();
         else if (tabs.SelectedIndex == 2 && projectsDirty) RefreshProjects();
@@ -209,7 +252,7 @@ public sealed class InsightsWindow : Window
     Button Navigate(string text, int tab)
     {
         var button = new Button { Content = text + "  →", HorizontalAlignment = HorizontalAlignment.Left,
-            Foreground = new SolidColorBrush(SelectedProvider == "Codex" ? InsightsUi.Blue : InsightsUi.Purple), Margin = new Thickness(0, 6, 0, 6) };
+            Foreground = new SolidColorBrush(SelectedProvider == "Codex" ? InsightsUi.Blue : InsightsUi.Purple), Margin = new Thickness(0, 6, 14, 6) };
         button.Click += (_, _) => tabs.SelectedIndex = tab; return button;
     }
     void RefreshOverview()
@@ -229,8 +272,8 @@ public sealed class InsightsWindow : Window
         if (sessions.ErrorFor(SelectedProvider) is string error) sessionBlock.Children.Add(InsightsUi.Text(L.Display(error), 12, InsightsUi.Muted));
         sessionBlock.Children.Add(Navigate(waiting > 0 ? L.T("Sprawdź oczekujące sesje") : L.T("Otwórz sesje"), 4));
         var top = new Grid(); top.ColumnDefinitions.Add(new ColumnDefinition()); top.ColumnDefinitions.Add(new ColumnDefinition());
-        var liveCard = InsightsUi.Card(sessionBlock); liveCard.Margin = new Thickness(0, 0, 6, 12);
-        top.Children.Add(liveCard); overviewBody.Children.Add(top);
+        var liveCard = InsightsUi.Card(sessionBlock); liveCard.Margin = new Thickness(0, 0, 6, 12); liveCard.VerticalAlignment = VerticalAlignment.Top;
+        top.Children.Add(liveCard);
         if (quotas.TryGetValue(SelectedProvider, out var state) && state.Windows.Count > 0)
         {
             var quota = new StackPanel();
@@ -243,43 +286,25 @@ public sealed class InsightsWindow : Window
             if (!state.Connected || !state.Updated.HasValue || DateTimeOffset.Now - state.Updated > TimeSpan.FromMinutes(10))
                 quota.Children.Add(InsightsUi.Text(L.T("Ostatni zapis · oczekiwanie na aktualny odczyt"), 12, InsightsUi.Brush("#F1C879")));
             quota.Children.Add(Navigate(L.T("Historia limitów"), 1));
-            var quotaCard = InsightsUi.Card(quota); quotaCard.Margin = new Thickness(6, 0, 0, 12); Grid.SetColumn(quotaCard, 1); top.Children.Add(quotaCard);
+            var quotaCard = InsightsUi.Card(quota); quotaCard.Margin = new Thickness(6, 0, 0, 12); quotaCard.VerticalAlignment = VerticalAlignment.Top; Grid.SetColumn(quotaCard, 1); top.Children.Add(quotaCard);
         }
         else { var link = Navigate(L.T("Historia limitów"), 1); Grid.SetColumn(link, 1); top.Children.Add(link); }
         var entries = Entries;
-        overviewBody.Children.Add(InsightsUi.Text(L.T("Lokalna aktywność · ") + (string)period.SelectedItem, 16));
-        if (analysis.Loading) overviewBody.Children.Add(InsightsUi.Text(L.T("Indeksowanie… wyniki częściowe"), 12, InsightsUi.Muted));
-        overviewBody.Children.Add(InsightsUi.Card(InsightsUi.Metrics((L.T("Tokeny"), Tokens(entries.Sum(e => e.Total))),
-            (L.T("Odpowiedzi"), entries.Count.ToString("N0")), (L.T("Projekty"), entries.Select(e => e.Project).Distinct().Count().ToString("N0")))));
+        var activity = new StackPanel();
+        activity.Children.Add(InsightsUi.Metrics((L.T("Tokeny"), Tokens(entries.Sum(e => e.Total))),
+            (L.T("Odpowiedzi"), entries.Count.ToString("N0")), (L.T("Projekty"), entries.Select(e => e.Project).Distinct().Count().ToString("N0"))));
+        if (analysis.Loading) activity.Children.Add(InsightsUi.Text(L.T("Indeksowanie… wyniki częściowe"), 12, InsightsUi.Muted));
         if (entries.Count > 0)
         {
-            var activity = new StackPanel();
-            activity.Children.Add(InsightsUi.Text(L.T("Aktywność w czasie"), 16));
-            var chart = new System.Windows.Controls.Primitives.UniformGrid { Columns = 24, Height = 100, Margin = new Thickness(0, 8, 0, 8) };
-            var start = Since; var end = DateTimeOffset.Now;
-            double duration = Math.Max(1, (end - start).TotalSeconds);
-            var buckets = new long[24];
-            foreach (var entry in entries) buckets[Math.Clamp((int)((entry.At - start).TotalSeconds / duration * 24), 0, 23)] += entry.Total;
-            long maximum = Math.Max(1, buckets.Max());
-            for (int i = 0; i < buckets.Length; i++)
-            {
-                var bar = new Border { Background = InsightsUi.Brush("#18222E"), Margin = new Thickness(2, 0, 2, 0), CornerRadius = new CornerRadius(3) };
-                bar.Child = new Border { Background = new SolidColorBrush(SelectedProvider == "Codex" ? InsightsUi.Blue : InsightsUi.Purple),
-                    Height = buckets[i] == 0 ? 0 : Math.Max(3, 100.0 * buckets[i] / maximum), VerticalAlignment = VerticalAlignment.Bottom, CornerRadius = new CornerRadius(3) };
-                var at = start.AddSeconds(duration * i / 24);
-                string label = at.LocalDateTime.ToString(L.ShortTimestampPattern, L.Culture) + " – " + start.AddSeconds(duration * (i + 1) / 24).LocalDateTime.ToString(L.ShortTimestampPattern, L.Culture);
-                WidgetTips.Set(bar, Tokens(buckets[i]) + L.T(" tokenów"), label);
-                AutomationProperties.SetName(bar, label + ": " + Tokens(buckets[i]) + L.T(" tokenów"));
-                chart.Children.Add(bar);
-            }
-            activity.Children.Add(chart);
-            activity.Children.Add(ValueRow(start.LocalDateTime.ToString(L.ShortTimestampPattern, L.Culture), end.LocalDateTime.ToString(L.ShortTimestampPattern, L.Culture)));
+            activity.Children.Add(InsightsUi.Text(L.T("Tokeny w czasie"), 14, InsightsUi.Muted));
+            activity.Children.Add(new ActivityChart(entries, Since, DateTimeOffset.Now, SelectedProvider == "Codex" ? InsightsUi.Blue : InsightsUi.Purple));
             activity.Children.Add(InsightsUi.Text(L.T("Brak słupka oznacza brak zapisanych tokenów, nie potwierdzoną bezczynność."), 11, InsightsUi.Muted));
-            overviewBody.Children.Add(InsightsUi.Card(activity));
-            overviewBody.Children.Add(Navigate(L.T("Wszystkie projekty"), 2));
         }
-        else overviewBody.Children.Add(InsightsUi.Text(L.T("Brak zapisanych odpowiedzi w tym okresie."), 12, InsightsUi.Muted));
-        overviewBody.Children.Add(Navigate(L.T("Modele i skład tokenów"), 3));
+        else activity.Children.Add(InsightsUi.Text(L.T("Brak zapisanych odpowiedzi w tym okresie."), 12, InsightsUi.Muted));
+        var links = new WrapPanel(); links.Children.Add(Navigate(L.T("Wszystkie projekty"), 2));
+        links.Children.Add(Navigate(L.T("Modele i skład tokenów"), 3)); activity.Children.Add(links);
+        overviewBody.Children.Add(InsightsUi.Card(activity));
+        overviewBody.Children.Add(top);
     }
     void RefreshProjects()
     {
@@ -303,36 +328,66 @@ public sealed class InsightsWindow : Window
         int limit = projectLimit.SelectedIndex switch { 1 => 50, 2 => int.MaxValue, _ => 20 };
         projectBody.Children.Add(ValueRow(L.T("Tokeny we wszystkich projektach"), Tokens(total)));
         if (analysis.Loading) projectBody.Children.Add(InsightsUi.Text(L.T("Indeksowanie… wyniki częściowe"), 12, InsightsUi.Muted));
+        if (groups.Count > 0)
+        {
+            var labels = ProjectColumns();
+            labels.Margin = new Thickness(16, 8, 16, 4);
+            labels.Children.Add(InsightsUi.Text(L.T("Projekt"), 11, InsightsUi.Muted));
+            AddProjectNumber(labels, L.T("Tokeny"), 1, true);
+            AddProjectNumber(labels, L.T("Udział"), 2, true);
+            projectBody.Children.Add(labels);
+        }
         foreach (var g in groups.Take(limit))
         {
             long tokens = g.Sum(e => e.Total);
             double share = total > 0 ? tokens * 100.0 / total : 0;
             var box = new StackPanel();
-            var heading = new Grid(); heading.ColumnDefinitions.Add(new ColumnDefinition());
-            heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var heading = ProjectColumns();
             string project = System.IO.Path.GetFileName(g.Key.TrimEnd('\\', '/'));
-            var title = InsightsUi.Text(project, 16); title.FontWeight = FontWeights.SemiBold;
+            var title = InsightsUi.Text(project + "  ›", 15, new SolidColorBrush(name == "Codex" ? InsightsUi.Blue : InsightsUi.Purple)); title.FontWeight = FontWeights.SemiBold;
             title.TextWrapping = TextWrapping.NoWrap; title.TextTrimming = TextTrimming.CharacterEllipsis;
             title.Margin = new Thickness(0, 0, 14, 6);
             var open = ActionButton(title, () => OpenProject(g.Key)); open.Padding = new Thickness(0);
             AutomationProperties.SetName(open, L.T("Otwórz projekt ") + g.Key); heading.Children.Add(open);
-            var amount = InsightsUi.Text(L.F("{0} tokenów  ·  {1:0.#}%", Tokens(tokens), share), 15); Grid.SetColumn(amount, 1); heading.Children.Add(amount);
+            AddProjectNumber(heading, Tokens(tokens), 1);
+            AddProjectNumber(heading, share.ToString("0.#", L.Culture) + "%", 2);
+            WidgetTips.Set(heading, project, tokens.ToString("N0", L.Culture) + L.T(" tokenów"));
             box.Children.Add(heading);
-            box.Children.Add(new ProgressBar { Value = share, Height = 5, Margin = new Thickness(0, 4, 0, 8),
+            box.Children.Add(new ProgressBar { Value = share, Height = 3, Margin = new Thickness(0, 4, 0, 5),
                 Foreground = new SolidColorBrush(name == "Codex" ? InsightsUi.Blue : InsightsUi.Purple), Background = InsightsUi.Line, BorderThickness = new Thickness(0) });
-            var actionRow = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+            var actionRow = new DockPanel { Margin = new Thickness(0) };
             WidgetTips.Set(open, L.T("Sesje i modele  →"), g.Key);
             actionRow.Children.Add(InsightsUi.Text($"{Count(g.Select(e => e.Session).Distinct().Count(), L.T("sesja"), L.T("sesje"), L.T("sesji"))} · {Count(g.Count(), L.T("odpowiedź"), L.T("odpowiedzi"), L.T("odpowiedzi"))}", 13, InsightsUi.Muted));
             box.Children.Add(actionRow);
-            if (compactProjects.IsChecked != true) box.Children.Add(Details(name + ":" + g.Key, L.T("Skład tokenów"), TokenComposition(TokenTotals.From(g))));
+            if (compactProjects.IsChecked != true) {
+                var details = Details(name + ":" + g.Key, L.T("Skład tokenów"), TokenComposition(TokenTotals.From(g)));
+                details.Margin = new Thickness(0, 2, 0, 0); box.Children.Add(details);
+            }
             var card = InsightsUi.Card(box);
-            if (compactProjects.IsChecked == true) { card.Padding = new Thickness(12, 8, 12, 8); card.Margin = new Thickness(0, 0, 0, 6); }
+            card.Padding = new Thickness(16, compactProjects.IsChecked == true ? 8 : 12, 16, compactProjects.IsChecked == true ? 8 : 12);
+            card.Margin = new Thickness(0, 0, 0, 8);
             projectBody.Children.Add(card);
         }
         if (total == 0) projectBody.Children.Add(InsightsUi.Card(InsightsUi.Text(L.T("Brak danych tokenów w tym okresie."), 14, InsightsUi.Muted)));
         if (groups.Count == 0 && entries.Count > 0) projectBody.Children.Add(InsightsUi.Text(L.T("Brak projektów pasujących do wyszukiwania."), 14, InsightsUi.Muted));
         projectBody.Children.Add(InsightsUi.Text(L.F("Pokazano {0} z {1} · udział ze wszystkich projektów", Math.Min(limit, groups.Count), groups.Count), 11, InsightsUi.Muted));
         if (analysis.Skipped > 0) projectBody.Children.Add(InsightsUi.Text(L.F("Pominięte pliki lub rekordy: {0}", analysis.Skipped), 11, InsightsUi.Muted));
+    }
+
+    static Grid ProjectColumns()
+    {
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+        return row;
+    }
+    static void AddProjectNumber(Grid row, string value, int column, bool label = false)
+    {
+        var text = InsightsUi.Text(value, label ? 11 : 14, label || column == 2 ? InsightsUi.Muted : InsightsUi.Ink);
+        text.HorizontalAlignment = HorizontalAlignment.Right;
+        if (!label && column == 1) text.FontWeight = FontWeights.SemiBold;
+        Grid.SetColumn(text, column); row.Children.Add(text);
     }
 
     static Button ActionButton(object label, Action action)
@@ -554,8 +609,11 @@ public sealed class InsightsWindow : Window
             {
                 var content = new StackPanel();
                 var heading = new DockPanel();
-                var status = InsightsUi.Text(s.StateLabel, 12, InsightsUi.Brush(s.State == "waiting" ? "#F1C879" : "#89D9C1"));
-                DockPanel.SetDock(status, Dock.Right); heading.Children.Add(status);
+                var status = InsightsUi.Text(s.StateLabel, 12, InsightsUi.Brush(s.State == "waiting" ? "#F1C879" : s.State == "working" ? "#89D9C1" : "#ACB8C8"));
+                status.Margin = new Thickness(0);
+                var badge = new Border { Child = status, CornerRadius = new CornerRadius(5), Padding = new Thickness(8, 4, 8, 4),
+                    VerticalAlignment = VerticalAlignment.Top, Background = InsightsUi.Brush(s.State == "waiting" ? "#3B3325" : s.State == "working" ? "#213C37" : "#283340") };
+                DockPanel.SetDock(badge, Dock.Right); heading.Children.Add(badge);
                 var title = InsightsUi.Text(WidgetTips.Line(s.Name, 100), 14); title.FontWeight = FontWeights.SemiBold; title.Margin = new Thickness(0, 3, 14, 6); heading.Children.Add(title);
                 content.Children.Add(heading);
                 var path = InsightsUi.Text(s.Directory, 11, InsightsUi.Muted); path.TextWrapping = TextWrapping.NoWrap;

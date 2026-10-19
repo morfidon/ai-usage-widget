@@ -23,6 +23,12 @@ public static class FeatureTests
             Check(InsightsWindow.PeriodStart(1, periodNow) == periodNow.AddDays(-7), "Statistics retain a seven-day range");
             Check(InsightsWindow.PeriodStart(2, periodNow) == new DateTimeOffset(periodNow.Date, TimeZoneInfo.Local.GetUtcOffset(periodNow.Date)), "Today starts at local midnight");
             Check(InsightsWindow.PeriodStart(3, periodNow) == periodNow.AddHours(-1), "Hourly statistics use a rolling hour");
+            var chartEnd = periodNow.AddHours(24);
+            TokenEntry ChartEntry(DateTimeOffset at, long tokens) => new("Codex", "fixture", "session", "model", at, tokens, 0, 0, 0, false);
+            var chartBuckets = ActivityChart.Bucket(new[] { ChartEntry(periodNow, 10), ChartEntry(periodNow.AddHours(1), 20), ChartEntry(chartEnd, 30),
+                ChartEntry(periodNow.AddTicks(-1), 1000), ChartEntry(chartEnd.AddTicks(1), 1000) }, periodNow, chartEnd);
+            Check(chartBuckets[0] == 10 && chartBuckets[1] == 20 && chartBuckets[23] == 30 && chartBuckets.Sum() == 60, "Activity chart preserves totals and exact time boundaries without clamping outside records");
+            Check(ActivityChart.Bucket(new[] { ChartEntry(periodNow, 10) }, periodNow, periodNow).All(n => n == 0), "Activity chart safely handles an empty time range");
             string discoveryRoot = Path.Combine(dir, "discovery");
             Directory.CreateDirectory(discoveryRoot);
             string[] Detect() => ProviderDiscovery.Detect(new Settings(), discoveryRoot, discoveryRoot, discoveryRoot, "", discoveryRoot);

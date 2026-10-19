@@ -69,6 +69,10 @@ public static class L
     }
     static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)
     {
+        ["Udział"] = "Share",
+        ["Projekt"] = "Project",
+        ["Strzałki w lewo i prawo: odczyty tokenów."] = "Left and right arrows: token readings.",
+        ["Tokeny w czasie"] = "Tokens over time",
         ["Tokeny we wszystkich projektach"] = "Tokens across all projects",
         ["20 projektów"] = "20 projects",
         ["50 projektów"] = "50 projects",

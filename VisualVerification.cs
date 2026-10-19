@@ -54,6 +54,17 @@ public static class VisualVerification
                     var tabControl = Descendants(scoped).OfType<TabControl>().Single();
                     if (scoped.SelectedProvider != providerName || tabControl.SelectedIndex != 0) throw new Exception("Provider click did not open its overview");
                     Capture(scoped, "visual-overview-" + providerName.ToLowerInvariant());
+                    if (tabControl.Items.Count != 5) throw new Exception("Readability changes introduced redundant tabs");
+                    var activityChart = Descendants(scoped).OfType<ActivityChart>().Single();
+                    foreach (var (key, index) in new[] { (System.Windows.Input.Key.End, 23), (System.Windows.Input.Key.Home, 0), (System.Windows.Input.Key.Right, 1) })
+                    {
+                        activityChart.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, PresentationSource.FromVisual(activityChart), 0, key) { RoutedEvent = System.Windows.Input.Keyboard.KeyDownEvent });
+                        if ((int)typeof(ActivityChart).GetField("selected", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(activityChart)! != index) throw new Exception("Activity chart keyboard navigation failed");
+                    }
+                    if (providerName == "Codex") {
+                        scoped.Width = 620; scoped.Height = 440; await Task.Delay(60); Capture(scoped, "visual-overview-narrow");
+                        scoped.Width = 820; scoped.Height = 760;
+                    }
                     scoped.SelectSessions(); await Task.Delay(80);
                     var sessionTexts = Descendants(scoped).OfType<TextBlock>().Select(t => t.Text).ToList();
                     if (sessionTexts.Contains(providerName == "Claude" ? "Weryfikacja tłumaczeń" : "Przegląd interfejsu")) throw new Exception("Sessions leaked across providers");
@@ -319,7 +330,7 @@ public static class VisualVerification
                 await Task.Delay(80);
                 if (L.Language != "en") throw new Exception("Tray language option did not work");
                 selected.Close();
-                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 35, StatisticsFilters = true, ProjectSearch = true, ProjectSorting = true, ProjectLimits = true, CompactProjects = true, LiveLanguageSelection = true, EnglishAndPolish = true, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
+                File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = true, Captures = 36, ActivityChartKeyboard = true, StatisticsFilters = true, ProjectSearch = true, ProjectSorting = true, ProjectLimits = true, CompactProjects = true, LiveLanguageSelection = true, EnglishAndPolish = true, SelectedProviders = true, LiveProviderSelection = true, EmptyProviderSelection = true, TrayProviderSelection = true, CompactSessions = true, HistoryButton = true, HideAndRestore = true, ScrollPreserved = true, StateChanges = true, ProjectExpansion = true, ProjectRankings = true, SessionPagination = true, CodexSessionNavigation = true, ClaudeSessionNavigation = true, NarrowWindow = true, EmptyAndSparseHistory = true, BoundedTooltips = true, ProviderNavigation = true, ScopedModelsAndSessions = true, SharedPeriod = true, main.ActualWidth, main.ActualHeight, main.IsVisible }));
             }
             catch (Exception e) { result = 1; File.WriteAllText(Path.Combine(Settings.DataDirectory, "visual-check.json"), JsonSerializer.Serialize(new { Passed = false, Error = e.ToString() })); }
             finally { main.Close(); app.Shutdown(); }
