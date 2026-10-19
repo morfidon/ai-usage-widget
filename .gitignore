@@ -9,3 +9,12 @@ data/
 tests/bridge-fixture/
 tests/reference/
 tools/central/*.exe
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+**/.credentials.json
+**/auth.json
+**/tokens.enc
