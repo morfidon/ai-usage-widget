@@ -4,6 +4,68 @@ Want to see your remaining AI subscription limits without opening five different
 This Windows tray widget reads the accounts you already use and keeps their quotas in
 one small window. Checking limits does not send prompts or run model tasks.
 
+## Start here: paste this prompt into Codex
+
+Run Codex on the Windows PC where you want the widget. Fill in the repository link
+and the AI tools you use, then copy the whole block into Codex. For example, enter
+`Codex, Claude Code` in the tools field. Leave that field empty if you want Codex
+to detect installed clients. You do not need to look up paths or prepare commands.
+
+```text
+Set up AI Usage Widget on this computer and carry the work through to a working,
+verified installation. Respond in the language I use.
+
+Repository: [PASTE THE GITHUB REPOSITORY LINK HERE]
+AI tools I use: [ENTER YOUR TOOLS, e.g. Codex, Claude Code; OR LEAVE EMPTY TO DETECT]
+
+Read the repository's AGENTS.md, README and relevant setup documentation first.
+If this repository is already open locally, use that checkout. Otherwise clone or
+download the repository above into a suitable writable directory yourself.
+
+Work autonomously. Inspect the OS, installed applications, native executables,
+existing widget installation, settings and account readiness yourself. Infer paths
+and routine setup choices from that evidence instead of asking me to find them.
+Treat unfilled bracketed fields as missing information, not literal values. Ask
+only when necessary information cannot be found or reasonably inferred, a choice
+materially changes the result, or an action genuinely needs my participation.
+Group related missing details into one short question and continue independent work.
+
+Enable only the supported providers matching my tools above. If the tools field is
+empty, detect installed clients and use those; do not assume I have every provider.
+Respect existing saved choices unless my list changes them. Explain unsupported
+tools without silently substituting another provider. An empty selection is valid.
+
+I authorize the local installation and verification of the widget, its verified
+per-user .NET prerequisites, and the required Central CLI if I selected JetBrains Air.
+If a selected provider's native client is missing, check its official installation
+instructions and install it for my user where possible. Do not buy subscriptions.
+Keep autostart unchanged, and leave it off on a fresh installation. For selected
+Claude Code, you may enable the backed-up status line bridge if needed for quota
+reads; explain that change and preserve the previous status line. Use repository
+defaults for other optional preferences instead of asking about each one.
+
+Use setup.ps1 with the appropriate provider selection and prerequisite options.
+Preserve existing settings, history and unrelated configuration. Diagnose and fix
+setup problems within this scope; do not stop after a plan, build, or first error.
+If the environment cannot run the Windows widget, explain exactly what environment
+is needed rather than claiming installation succeeded.
+
+If login, account selection, or another required human step remains, tell me the
+exact action in the provider's own app or browser. Never ask me to paste credentials.
+Wait for my answer when it is needed, then resume verification without repeating
+completed installation steps. Do not send model prompts or paid test requests.
+
+Finish by checking current limits for selected providers, launching the widget,
+and verifying its visible window and tray behavior. Use the setup and doctor
+reports as evidence; an unselected provider is not an error. Report briefly what
+works, where to open the widget, and any specific unresolved blocker. Do not claim
+a provider works or Windows autostart was verified without actually checking it.
+```
+
+Codex handles the setup decisions it can resolve locally. Signing in to your account
+may still require your browser or a short reply; Codex should then continue the work.
+For manual commands, use the quick start below.
+
 ## Quick start (Windows x64)
 
 You need **native Windows 10/11 x64** and a writable checkout. A signed-in provider
@@ -59,20 +121,6 @@ Setup saves `setup-result.json` in `%LOCALAPPDATA%\AIUsageWidget\data`. With `-N
 window verification is skipped and explicitly recorded. `-CheckOnly` checks platform,
 SDK/runtime and provider selection without building, downloading, installing or logging in.
 It does not verify account access, write permissions or the visible UI.
-
-## Set it up with an AI agent
-
-Paste the repository link with this prompt into an agent running on your Windows PC:
-
-> Analyze this repository, read AGENTS.md, and set up AI Usage Widget for me on this
-> Windows PC. Detect my installed providers and use setup.ps1. You may download the
-> verified per-user .NET prerequisites if needed. Keep autostart and Claude integration
-> unchanged unless I ask for them. Verify the selected accounts and the visible widget.
-> If I need to log in, tell me the exact action, wait for me, then finish verification.
-> Do not ask me to paste credentials. Report what works and any remaining blocker.
-
-The agent can automate installation, but your account login still belongs to you.
-A coding agent running only in a remote Linux environment cannot verify a Windows UI.
 
 ## Where it installs and how to update
 
