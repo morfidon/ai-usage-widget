@@ -108,6 +108,13 @@ public static class FeatureTests
             var live = new SessionSnapshot(new() { sessions[1] }, DateTimeOffset.Now);
             Check(MascotView.Choose(s with { Name = "Claude" }, live) == MascotState.Waiting, "Mascot gives waiting sessions priority");
             Check(MascotView.Choose(s with { Updated = DateTimeOffset.Now }, SessionSnapshot.Empty) == MascotState.Sleeping, "No active session gives a resting mascot");
+            var exhausted = s with { Name = "Codex", Connected = true, Updated = DateTimeOffset.Now,
+                Windows = new() { new("codex:primary", "5 hours", 100, DateTimeOffset.Now.AddHours(1).ToUnixTimeSeconds(), 300) } };
+            var working = new SessionSnapshot(new() { new("Codex", "active", "fixture", "C:/fixture", "working") }, now);
+            Check(MascotView.Choose(exhausted, working) == MascotState.Working, "Real work remains visible even when a quota reading is exhausted");
+            Check(MascotView.Choose(exhausted, SessionSnapshot.Empty) == MascotState.Exhausted, "An exhausted quota is still shown when there is no active work");
+            Check(MascotView.Choose(s with { Name = "Codex", Updated = DateTimeOffset.Now }, SessionSnapshot.Empty with { CodexError = "unavailable" }) == MascotState.Offline,
+                "A failed session read cannot pretend the character is resting");
             var healthy = HealthMonitor.Parse("Claude", Parse("""{"status":{"indicator":"none"},"incidents":[]}"""), now);
             Check(healthy.Available && !healthy.Incident, "Healthy service response");
             Check(HealthMonitor.Parse("Codex", Parse("{}"), now).Available == false, "Missing status does not imply a healthy service");

@@ -23,6 +23,7 @@ public static class VisualVerification
             ((System.Windows.Threading.DispatcherTimer)typeof(MascotView).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!).Stop();
             typeof(MascotView).GetField("phase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(view, 1.75);
             view.InvalidateVisual();
+            view.InvalidateVisual();
         }
         window.UpdateLayout();
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth * 1.5), (int)Math.Ceiling(window.ActualHeight * 1.5), 144, 144, PixelFormats.Pbgra32);
@@ -178,6 +179,7 @@ public static class VisualVerification
                         p.Children.Add(InsightsUi.Text(MascotView.Label(state), 10, InsightsUi.Muted)); grid.Children.Add(p);
                     }
                 gallery.Show(); await Task.Delay(200); Capture(gallery, "visual-mascots"); gallery.Close();
+                VerifyMascotMotion();
                 var tipTarget = Descendants(main).OfType<FrameworkElement>()
                     .First(e => System.Windows.Automation.AutomationProperties.GetHelpText(e).StartsWith("Otwórz listę sesji"));
                 if (((StackPanel)((ToolTip)tipTarget.ToolTip).Content).Children.OfType<TextBlock>().Any(t => t.Text.Contains("snake-game")))
@@ -299,5 +301,26 @@ public static class VisualVerification
             var child = VisualTreeHelper.GetChild(parent, i); yield return child;
             foreach (var descendant in Descendants(child)) yield return descendant;
         }
+    }
+    static void VerifyMascotMotion()
+    {
+        byte[] Frame(MascotView view, double phase) {
+            view.Measure(new Size(80, 64)); view.Arrange(new Rect(0, 0, 80, 64));
+            typeof(MascotView).GetField("phase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(view, phase);
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+                typeof(MascotView).GetMethod("OnRender", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, new object[] { dc });
+            var bitmap = new RenderTargetBitmap(80, 64, 96, 96, PixelFormats.Pbgra32); bitmap.Render(visual);
+            var pixels = new byte[80 * 64 * 4]; bitmap.CopyPixels(pixels, 80 * 4, 0); return pixels;
+        }
+        foreach (string provider in new[] { "Codex", "Claude" })
+            foreach (MascotState state in Enum.GetValues<MascotState>()) {
+                var still = new MascotView(provider, state, false);
+                if (!Frame(still, 0).SequenceEqual(Frame(still, .65))) throw new Exception("Disabled mascot animation is not static: " + provider + state);
+                var animated = new MascotView(provider, state, true);
+                bool changed = !Frame(animated, 0).SequenceEqual(Frame(animated, .65));
+                bool shouldMove = SystemParameters.ClientAreaAnimation && state is not (MascotState.Offline or MascotState.Exhausted);
+                if (changed != shouldMove) throw new Exception("Mascot motion does not match activity/reduced-motion state: " + provider + state);
+            }
     }
 }

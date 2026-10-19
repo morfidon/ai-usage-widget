@@ -511,9 +511,18 @@ public sealed class MainWindow : Window
     {
         if (provider.Name is not ("Codex" or "Claude")) return;
         bool finished = finishedUntil.TryGetValue(provider.Name, out var until) && until > DateTimeOffset.Now;
-        var mascot = new MascotView(provider.Name, MascotView.Choose(provider, sessions, finished), settings.AnimateMascots)
-        { Width = 44, Height = 35, Margin = new Thickness(0, -5, 6, -5), VerticalAlignment = VerticalAlignment.Center };
-        mascot.ToolTip = null;
+        var state = MascotView.Choose(provider, sessions, finished);
+        var mascot = new MascotView(provider.Name, state, settings.AnimateMascots)
+        { Width = 62, Height = 50, Margin = new Thickness(0, -4, 7, -4), VerticalAlignment = VerticalAlignment.Center };
+        var name = title.Children.OfType<TextBlock>().First();
+        int nameIndex = title.Children.IndexOf(name);
+        title.Children.Remove(name);
+        var identity = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        identity.Children.Add(name);
+        var activity = Text(MascotView.Label(state), 9,
+            state == MascotState.Waiting ? Brush("#FFD483") : state is MascotState.Working or MascotState.Finished ? Brush("#87E7CB") : Muted);
+        activity.Margin = new Thickness(0, 2, 0, 0);
+        identity.Children.Add(activity); title.Children.Insert(nameIndex, identity);
         title.Children.Insert(0, mascot);
     }
     void Render()
@@ -584,8 +593,7 @@ public sealed class MainWindow : Window
             && old.Stale == stale && old.Expired == expired && old.Health == health && old.Mascot == mascot
             && old.SessionError == error && old.Sessions.SequenceEqual(rows))
         {
-            // Keep the existing animation's reset at each logical refresh, without rebuilding its card.
-            foreach (var view in old.Views) view.ResetPhase();
+            // Data refreshes must not restart the character's animation.
             return;
         }
         var element = Card(state, color);
