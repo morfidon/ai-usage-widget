@@ -114,12 +114,15 @@ public static class ReadmeMedia
                 history.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(100);
                 var details = Application.Current.Windows.OfType<InsightsWindow>().Single(w => ReferenceEquals(w.Owner, main));
                 details.Width = 820; details.Height = 550;
-                var tabs = Children(details).OfType<TabControl>().Single(); tabs.SelectedIndex = 1;
+                var tabs = Children(details).OfType<TabControl>().Single();
+                details.Height = 760; tabs.SelectedIndex = 0;
+                await Task.Delay(100); Save(Snapshot(details), "statistics.png");
+                details.Height = 550; tabs.SelectedIndex = 1;
                 await Task.Delay(100); Save(Snapshot(details), "history.png");
                 for (int frame = 84; frame < 132; frame++) { Frame(details, frame, 2); await Task.Delay(12); }
                 tabs.SelectedIndex = 2; await Task.Delay(80); Save(Snapshot(details), "projects.png");
                 details.Close();
-                Console.WriteLine("Exported 132 WPF frames and 5 PNGs using preview fixtures only.");
+                Console.WriteLine("Exported 132 WPF frames and 6 PNGs using preview fixtures only.");
             } catch (Exception e) { Console.Error.WriteLine(e); exit = 1; }
             finally { main.Close(); app.Shutdown(); }
         };

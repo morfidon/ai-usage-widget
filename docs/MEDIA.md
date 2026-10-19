@@ -34,6 +34,7 @@ FFmpeg is needed only to encode this documentation GIF, not to use the widget.
 | `widget.png` | Compact Codex/Claude widget with sample activity. |
 | `one-provider.png` | Widget after hiding Claude. |
 | `history.png` | Quota history in the details window. |
+| `statistics.png` | Local activity summary and token chart, followed by live status. |
 | `projects.png` | Local project/token ranking in the details window. |
 
 Frames remain under `.verify`, which is ignored by Git. The GIF uses a shared
@@ -48,3 +49,13 @@ The layout uses an early demo, a short explanation of value, visible setup/help
 links and separate detailed guides. These choices follow [GitHub's README guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes)
 and [Make a README's advice on visuals, installation and usage examples](https://www.makeareadme.com/).
 Media and documentation use repository-relative links so they also work in clones.
+
+## Statistics readability references
+
+[NN/g on dashboard perception](https://www.nngroup.com/articles/dashboards-preattentive/)
+and [Datawrapper on chart text](https://www.datawrapper.de/blog/text-in-data-visualizations)
+informed the layout: consistent number alignment, labels beside their data, restrained
+color, and fewer competing font sizes. The activity chart starts at zero and shows
+its scale; empty buckets mean no recorded tokens. Exact counts remain available on
+hover and through keyboard selection. Project token counts and shares have separate
+fixed-width columns; current status stays separate from the selected time period.

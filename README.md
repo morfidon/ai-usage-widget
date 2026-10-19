@@ -165,6 +165,8 @@ Some integrations use internal client interfaces that can change after updates.
 
 ### Quota history
 
+<img src="docs/media/statistics.png" alt="Local activity: aligned totals, a token chart with a zero baseline, and current session and quota status below." width="820">
+
 <img src="docs/media/history.png" alt="Codex quota history with a five-hour usage chart and the weekly quota below it." width="820">
 
 ### Project and token breakdown

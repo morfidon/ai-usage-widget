@@ -1,4 +1,4 @@
-param([switch]$SkipBuild)
+﻿param([switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'Prerequisites.ps1')
@@ -38,7 +38,7 @@ try {
 } finally { Pop-Location }
 $media = Join-Path $root 'docs/media'
 [IO.Directory]::CreateDirectory($media) | Out-Null
-foreach ($name in @('overview.png','widget.png','one-provider.png','history.png','projects.png')) {
+foreach ($name in @('overview.png','widget.png','one-provider.png','history.png','projects.png','statistics.png')) {
     Copy-Item -LiteralPath (Join-Path $rendered $name) -Destination (Join-Path $media $name) -Force
 }
 $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
