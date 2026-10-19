@@ -125,6 +125,9 @@ public sealed class Settings
     public int RefreshSeconds { get; set; } = 60;
     public string? CodexPath { get; set; }
     public string? ClaudeDirectory { get; set; }
+    // Null preserves the existing five-provider behavior on upgrades.
+    public string[]? EnabledProviders { get; set; }
+    public bool IsEnabled(string name) => EnabledProviders is null || EnabledProviders.Contains(name, StringComparer.OrdinalIgnoreCase);
     public string TrayProvider { get; set; } = "Codex";
     public bool AnimateMascots { get; set; } = true;
     public static string ProjectDirectory => Directory.GetParent(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))!.FullName;

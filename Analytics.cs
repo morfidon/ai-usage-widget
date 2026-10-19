@@ -100,7 +100,8 @@ public sealed class TranscriptAnalytics : IDisposable
         this.settings = settings;
         sources = new[] { (claudeProjects ?? Path.Combine(LocalPaths.Claude(settings), "projects"), "Claude"),
             (codexSessions ?? Path.Combine(LocalPaths.Codex, "sessions"), "Codex"),
-            (codexArchives ?? Path.Combine(LocalPaths.Codex, "archived_sessions"), "Codex") };
+            (codexArchives ?? Path.Combine(LocalPaths.Codex, "archived_sessions"), "Codex") }
+            .Where(source => settings.IsEnabled(source.Item2)).ToArray();
     }
     public AnalyticsSnapshot Scan(CancellationToken token, DateTimeOffset? nowOverride = null)
     {

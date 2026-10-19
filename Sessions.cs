@@ -70,7 +70,8 @@ public sealed class SessionMonitor
     public SessionMonitor(Settings settings) => this.settings = settings;
     public async Task<SessionSnapshot> Read(CancellationToken token)
     {
-        var claude = ReadClaude(token); var codex = Task.Run(ReadCodex, token);
+        var claude = settings.IsEnabled("Claude") ? ReadClaude(token) : Task.FromResult<(List<LiveSession>, string?)>((new(), null));
+        var codex = settings.IsEnabled("Codex") ? Task.Run(ReadCodex, token) : Task.FromResult<(List<LiveSession>, string?)>((new(), null));
         await Task.WhenAll(claude, codex);
         return new(claude.Result.Item1.Concat(codex.Result.Item1).ToList(), DateTimeOffset.Now, claude.Result.Item2, codex.Result.Item2);
     }

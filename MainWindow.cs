@@ -328,7 +328,8 @@ public sealed class MainWindow : Window
         if (healthBusy) return; healthBusy = true;
         try
         {
-            var a = healthMonitor.Read("Codex", lifetime.Token); var b = healthMonitor.Read("Claude", lifetime.Token);
+            var a = settings.IsEnabled("Codex") ? healthMonitor.Read("Codex", lifetime.Token) : Task.FromResult(ServiceHealth.Empty("Codex"));
+            var b = settings.IsEnabled("Claude") ? healthMonitor.Read("Claude", lifetime.Token) : Task.FromResult(ServiceHealth.Empty("Claude"));
             await Task.WhenAll(a, b); lifetime.Token.ThrowIfCancellationRequested(); codexHealth = await a; claudeHealth = await b; Render();
         }
         catch (OperationCanceledException) { }
@@ -398,10 +399,11 @@ public sealed class MainWindow : Window
         brandSubtitle.Visibility = settings.Compact ? Visibility.Collapsed : Visibility.Visible;
         modeButton.Foreground = settings.Compact ? new SolidColorBrush(Mint) : Muted;
         insights?.UpdateQuotas(codexState, claudeState);
-        RefreshCard(0, codexState, CodexAccent); RefreshCard(1, claudeState, ClaudeAccent);
-        RefreshCard(2, devinState, DevinAccent); RefreshCard(3, airState, AirAccent);
-        RefreshCard(4, antigravityState, AntigravityAccent);
-        var states = new[] { codexState, claudeState, devinState, airState, antigravityState };
+        int index = 0;
+        foreach (var (state, color) in new[] { (codexState, CodexAccent), (claudeState, ClaudeAccent),
+            (devinState, DevinAccent), (airState, AirAccent), (antigravityState, AntigravityAccent) })
+            if (settings.IsEnabled(state.Name)) RefreshCard(index++, state, color);
+        var states = new[] { codexState, claudeState, devinState, airState, antigravityState }.Where(s => settings.IsEnabled(s.Name)).ToArray();
         var updates = states.Select(s => s.Updated).Where(d => d.HasValue).ToList();
         footer.FontSize = settings.Compact ? 9 : 10;
         footer.Text = busy ? "Odświeżanie…" : updates.Count == 0 ? "Łączenie z kontami…"
@@ -667,7 +669,7 @@ public sealed class MainWindow : Window
         if (!activityBusy && DateTimeOffset.Now - lastActivity >= TimeSpan.FromSeconds(9)) _ = RefreshActivity();
         if (!analyticsBusy && DateTimeOffset.Now - lastAnalytics >= TimeSpan.FromSeconds(analysis.Loading ? 3 : 60)) _ = RefreshAnalytics();
         if (!healthBusy && DateTimeOffset.Now - lastHealth >= TimeSpan.FromMinutes(3)) _ = RefreshHealth();
-        var bridge = claude.Bridge();
+        var bridge = settings.IsEnabled("Claude") ? claude.Bridge() : null;
         if (bridge is not null)
         {
             string fingerprint = JsonSerializer.Serialize(bridge);
@@ -690,11 +692,13 @@ public sealed class MainWindow : Window
         {
             async Task Codex()
             {
+                if (!settings.IsEnabled("Codex")) return;
                 var state = await codex.Fetch(lifetime.Token);
                 codexState = Merge(codexState, state); Alert(codexState); Render();
             }
             async Task Claude()
             {
+                if (!settings.IsEnabled("Claude")) return;
                 var state = await claude.Fetch(lifetime.Token);
                 if (state is not null && (!claudeState.Updated.HasValue || !state.Updated.HasValue || state.Updated >= claudeState.Updated))
                     claudeState = Merge(claudeState, state);
@@ -702,14 +706,17 @@ public sealed class MainWindow : Window
             }
             async Task Devin()
             {
+                if (!settings.IsEnabled("Devin")) return;
                 devinState = Merge(devinState, await devin.Fetch(lifetime.Token)); Alert(devinState); Render();
             }
             async Task Air()
             {
+                if (!settings.IsEnabled("JetBrains Air")) return;
                 airState = Merge(airState, await air.Fetch(lifetime.Token)); Alert(airState); Render();
             }
             async Task Antigravity()
             {
+                if (!settings.IsEnabled("Antigravity")) return;
                 antigravityState = Merge(antigravityState, await antigravity.Fetch(lifetime.Token)); Alert(antigravityState); Render();
             }
             await Task.WhenAll(Codex(), Claude(), Antigravity(), Devin(), Air()); SaveCache();
@@ -747,11 +754,12 @@ public sealed class MainWindow : Window
     }
     void SaveCache()
     {
-        bool changed = history.Record(codexState, DateTimeOffset.Now) | history.Record(claudeState, DateTimeOffset.Now);
+        bool changed = (settings.IsEnabled("Codex") && history.Record(codexState, DateTimeOffset.Now))
+            | (settings.IsEnabled("Claude") && history.Record(claudeState, DateTimeOffset.Now));
         if (changed) insights?.RefreshHistory();
         try
         {
-            File.WriteAllText(CachePath + ".tmp", JsonSerializer.Serialize(new[] { codexState, claudeState, devinState, airState, antigravityState }));
+            File.WriteAllText(CachePath + ".tmp", JsonSerializer.Serialize(new[] { codexState, claudeState, devinState, airState, antigravityState }.Where(s => settings.IsEnabled(s.Name))));
             File.Move(CachePath + ".tmp", CachePath, true);
         }
         catch { }

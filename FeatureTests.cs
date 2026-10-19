@@ -18,6 +18,11 @@ public static class FeatureTests
         Directory.CreateDirectory(dir);
         try
         {
+            var selected = new Settings { EnabledProviders = new[] { "Codex" } };
+            Check(selected.IsEnabled("codex") && !selected.IsEnabled("Claude") && new Settings().IsEnabled("Claude"),
+                "Provider selection is case insensitive and legacy settings retain all providers");
+            using (var disabled = new TranscriptAnalytics(new Settings { EnabledProviders = Array.Empty<string>() }, dir, dir, dir))
+                Check(disabled.Scan(CancellationToken.None).Entries.Count == 0, "Disabled providers do not index local transcripts");
             const string threadId = "019ef3c1-1234-7123-8123-0123456789ab";
             Check(CodexNavigation.ThreadUri(threadId) == "codex://threads/" + threadId,
                 "Codex navigation targets the exact existing thread without prompt or wake parameters");
